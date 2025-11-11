@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Viewer & Copier</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --secondary: #10b981;
+      --dark: #0f172a;
+      --light: #f8fafc;
+      --radius: 12px;
+      --transition: all 0.3s ease;
+      --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+    }
+
+    body {
+      background: linear-gradient(135deg, var(--dark), #1e293b);
+      color: var(--light);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      max-width: 900px;
+      width: 100%;
+      padding: 25px;
+      backdrop-filter: blur(8px);
+      transition: var(--transition);
+    }
+
+    .panel:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .title {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 1rem;
+    }
+
+    pre {
+      position: relative;
+      background: #1e293b;
+      padding: 20px;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: 'Courier New', monospace;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: var(--primary);
+      border: none;
+      color: white;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+    }
+
+    .copy-btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 25px;
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
+
+    @media (max-width: 600px) {
+      .title {
+        font-size: 1.6rem;
+      }
+      pre {
+        font-size: 0.85rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="panel">
+  <header>
+    <h1 class="title">Google Apps Script - SS</h1>
+    <p class="subtitle">Code.gs</p>
+  </header>
+
+  <!-- Paragraf explicativ deasupra codului -->
+  <p style="margin-bottom: 15px; color: #cbd5e1;">
+    Acest script Google Apps Script generează un raport consolidat pentru teritorii din mai multe fișiere Google Sheets. Codul creează un meniu personalizat în foaia activă și calculează totalurile de teritorii, evidențiind teritoriile în lucru și cele întârziate. Este structurat să preia informații din foile „S-13” și „Arhiva” și să le compileze într-o foaie de destinație numită „Acasă”.
+  </p>
+
+  <pre>
+    <button class="copy-btn" id="copyBtn"><i class="fas fa-copy"></i> Copy</button>
+    <code id="codeBlock" class="language-javascript"></code>
+  </pre>
+
+  <!-- Paragraf explicativ dedesubtul codului -->
+  <p style="margin-top: 15px; color: #cbd5e1;">
+    Scriptul include, de asemenea, analiza pe ani teocratici și sumarizarea diferitelor tipuri de date (col. G și H) pentru anul curent. De asemenea, generează un istoric al repartizărilor pe nume (coloana F) și afișează un mesaj de confirmare după generarea raportului. Această structură permite gestionarea centralizată și ușor de urmărit a tuturor informațiilor relevante pentru administrarea teritoriilor.
+	Înainte de utilizare, șterge toate caracterele „\” acolo unde este indicat.
+  </p>
+
+  <footer>
+    Code Viewer © 2025 | Petru
+  </footer>
+</div>
+
+  <script>
+    // Codul real pe care vrei să-l afișezi:
+    const exampleCode = `
+
+
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu("📊 Raport teritorii")
+    .addItem("Generează raport", "calculeazaTotalTeritorii")
+    .addToUi();
+}
+
+function calculeazaTotalTeritorii() {
+  // === CONFIGURARE ===
+  const sheetIDs = [
+    "1m4I2vJu42tPX73CfwosO-5zp8xxRLcAlH4c8DhOD5ko",
+    "1C2oFGtphPXZaum_gfy6KewoJYJklp-GuxX4U5ZgYLAU",
+    "1VzTFjTDmTaEB_xVAnKJlQwKDfkvj5bMYJQ2bj3Zj_Gc",
+    "1RitygUGelWKE68_hUpM9CFW8MG94A9O8SYpgnCkc8tI",
+    "1rdzZT9xLc84Jqg2aF4cGNzAlBkrxKJ5eo1wuF-L40dk",
+    "1dgcgMzqB5Em3cOTV2gRTEz9xvG4qupHUUfGeOZ8kXh8",
+  ];
+
+  const numeFoaieSursa1 = "S-13";
+  const numeFoaieSursa2 = "Arhiva";
+  const numeFoaieDest = "Acasă";
+  const randStartS13 = 4;
+  const randStartArhiva = 4;
+
+  const colB = 2; // număr teritoriu
+  const colD = 4; // data atribuirii
+  const colE = 5; // data returnării
+  const colDataArhiva = 4; // data în Arhiva
+  const colF = 6; // nume
+  const colG = 7; // tip
+  const colH = 8; // observații
+  
+  
+  // === DEFINIRE AN TEOCRATIC CURENT ===
+  const azi = new Date();
+  let anStart, anSfarsit;
+  if (azi.getMonth() + 1 >= 9) {
+    anStart = azi.getFullYear();
+    anSfarsit = azi.getFullYear() + 1;
+  } else {
+    anStart = azi.getFullYear() - 1;
+    anSfarsit = azi.getFullYear();
+  }
+
+  const inceputAnTeocratic = new Date(anStart, 8, 1); // 1 septembrie
+  const sfarsitAnTeocratic = new Date(anSfarsit, 7, 31, 23, 59, 59);
+  const numeAnTeocratic = \`\${anStart}-\${anSfarsit}\`           // === ELIMINA TOATE „\”
+
+// === FOAIA DESTINAȚIE ===
+  const ssDest = SpreadsheetApp.getActiveSpreadsheet();
+  let foaieDest = ssDest.getSheetByName(numeFoaieDest);
+  if (!foaieDest) foaieDest = ssDest.insertSheet(numeFoaieDest);
+  foaieDest.clear();
+
+  // === PROCESARE FIECARE DOCUMENT ===
+  sheetIDs.forEach((id, index) => {
+    try {
+      const ss = SpreadsheetApp.openById(id);
+      const numeDoc = ss.getName();
+	  
+	   // --- 1️⃣ Total teritorii & teritorii în lucru ---
+      const foaieS13 = ss.getSheetByName(numeFoaieSursa1);
+      let totalTeritorii = 0;
+      let teritoriiInLucru = 0;
+      let teritoriiPeste4Luni = [];
+
+      if (foaieS13) {
+        const lastRow = foaieS13.getLastRow();
+        if (lastRow >= randStartS13) {
+          const valoriColB = foaieS13.getRange(randStartS13, colB, lastRow - randStartS13 + 1, 1).getValues().flat();
+          const valoriColD = foaieS13.getRange(randStartS13, colD, lastRow - randStartS13 + 1, 1).getValues().flat();
+          const valoriColE = foaieS13.getRange(randStartS13, colE, lastRow - randStartS13 + 1, 1).getValues().flat();
+
+          totalTeritorii = valoriColB.filter(v => v !== "").length;
+
+          for (let i = 0; i < valoriColD.length; i++) {
+            const dataAtribuire = valoriColD[i];
+            const dataReturnare = valoriColE[i];
+            if (dataAtribuire && !dataReturnare) {
+              teritoriiInLucru++;
+              const diferentaZile = (azi - dataAtribuire) / (1000 * 60 * 60 * 24);
+              if (diferentaZile > 120) {
+                const nrTeritoriu = valoriColB[i];
+                if (nrTeritoriu) teritoriiPeste4Luni.push(nrTeritoriu);
+              }
+            }
+          }
+        }
+      }
+	  
+	  
+	  // --- 2️⃣ Analiza pe ani teocratici (Arhiva) ---
+      const foaieArhiva = ss.getSheetByName(numeFoaieSursa2);
+      const rezultateTeocratice = {};
+      const rezultateCurenteG = {};
+      const rezultateCurenteH = {};
+      const rezultateCurenteF = {};
+
+      if (foaieArhiva) {
+        const lastRow = foaieArhiva.getLastRow();
+        if (lastRow >= randStartArhiva) {
+          const dateValori = foaieArhiva.getRange(randStartArhiva, colDataArhiva, lastRow - randStartArhiva + 1, 1).getValues().flat();
+          const valoriB = foaieArhiva.getRange(randStartArhiva, colB, lastRow - randStartArhiva + 1, 1).getValues().flat();
+          const valoriF = foaieArhiva.getRange(randStartArhiva, colF, lastRow - randStartArhiva + 1, 1).getValues().flat();
+          const valoriG = foaieArhiva.getRange(randStartArhiva, colG, lastRow - randStartArhiva + 1, 1).getValues().flat();
+          const valoriH = foaieArhiva.getRange(randStartArhiva, colH, lastRow - randStartArhiva + 1, 1).getValues().flat();
+
+          // Toți anii teocratici existenți
+          dateValori.forEach(d => {
+            if (d instanceof Date) {
+              let anStartLocal = d.getMonth() + 1 >= 9 ? d.getFullYear() : d.getFullYear() - 1;
+              const anSfarsitLocal = anStartLocal + 1;
+              const cheie = \`\${anStartLocal}-\${anSfarsitLocal}\`;             // === ELIMINA TOATE „\”
+              rezultateTeocratice[cheie] = (rezultateTeocratice[cheie] || 0) + 1;
+            }
+          });
+		  
+		  
+		  // === Ocurențe unice din G (an teocratic curent)
+          for (let i = 0; i < dateValori.length; i++) {
+            const data = dateValori[i];
+            const gVal = valoriG[i];
+            if (data instanceof Date && gVal) {
+              if (data >= inceputAnTeocratic && data <= sfarsitAnTeocratic) {
+                rezultateCurenteG[gVal] = (rezultateCurenteG[gVal] || 0) + 1;
+              }
+            }
+          }
+
+          // === Ocurențe unice din H (an teocratic curent)
+          for (let i = 0; i < dateValori.length; i++) {
+            const data = dateValori[i];
+            const hVal = valoriH[i];
+            if (data instanceof Date && hVal) {
+              if (data >= inceputAnTeocratic && data <= sfarsitAnTeocratic) {
+                rezultateCurenteH[hVal] = (rezultateCurenteH[hVal] || 0) + 1;
+              }
+            }
+          }
+
+          // === Nume unice din F + numere asociate (coloana B)
+          for (let i = 0; i < valoriF.length; i++) {
+            const nume = valoriF[i];
+            const numarTeritoriu = valoriB[i];
+            if (nume && numarTeritoriu) {
+              if (!rezultateCurenteF[nume]) rezultateCurenteF[nume] = [];
+              rezultateCurenteF[nume].push(numarTeritoriu);
+            }
+          }
+        }
+      }
+	  
+	  
+	    // --- SCRIERE ÎN "Acasă" ---
+      const colStart = index * 2 + 1;
+      let randCurent = 1;
+
+      foaieDest.getRange(randCurent, colStart).setValue(numeDoc);
+      foaieDest.getRange(randCurent, colStart, 1, 2).setFontWeight("bold");
+
+      randCurent++;
+      foaieDest.getRange(randCurent, colStart).setValue("Total teritorii:");
+      foaieDest.getRange(randCurent, colStart + 1).setValue(totalTeritorii);
+
+      randCurent++;
+      foaieDest.getRange(randCurent, colStart).setValue("Teritorii în lucru:");
+      foaieDest.getRange(randCurent, colStart + 1).setValue(teritoriiInLucru);
+
+      randCurent++;
+      foaieDest.getRange(randCurent, colStart).setValue("Teritorii întârziate:");
+      foaieDest.getRange(randCurent, colStart + 1).setValue(teritoriiPeste4Luni.join(", "));
+
+      // Ani teocratici
+      const aniSortati = Object.keys(rezultateTeocratice)
+        .sort((a, b) => parseInt(a.split("-")[0]) - parseInt(b.split("-")[0]));
+
+      aniSortati.forEach(anTeocratic => {
+        randCurent++;
+        foaieDest.getRange(randCurent, colStart)
+          .setValue(\`\Teritorii lucrate în anul teocratic \${anTeocratic}:\`);   // === ELIMINA TOATE „\”
+        foaieDest.getRange(randCurent, colStart + 1)
+          .setValue(rezultateTeocratice[anTeocratic]);
+      });
+	  
+	  
+	  // În anul teocratic curent - Tip (G)
+      randCurent++;
+      foaieDest.getRange(randCurent, colStart).setValue("În anul teocratic curent - Tip:");
+      foaieDest.getRange(randCurent, colStart).setFontWeight("bold");
+
+      Object.keys(rezultateCurenteG).sort().forEach(k => {
+        randCurent++;
+        foaieDest.getRange(randCurent, colStart).setValue(k);
+        foaieDest.getRange(randCurent, colStart + 1).setValue(rezultateCurenteG[k]);
+      });
+
+      // În anul teocratic curent - Observații (H)
+      randCurent++;
+      foaieDest.getRange(randCurent, colStart).setValue("În anul teocratic curent - Observații:");
+      foaieDest.getRange(randCurent, colStart).setFontWeight("bold");
+
+      Object.keys(rezultateCurenteH).sort().forEach(k => {
+        randCurent++;
+        foaieDest.getRange(randCurent, colStart).setValue(k);
+        foaieDest.getRange(randCurent, colStart + 1).setValue(rezultateCurenteH[k]);
+      });
+
+      // Istoric repartizare (F)
+      randCurent++;
+      foaieDest.getRange(randCurent, colStart).setValue("Istoric repartizare teritorii (din Arhiva):");
+      foaieDest.getRange(randCurent, colStart).setFontWeight("bold");
+
+      Object.keys(rezultateCurenteF).sort().forEach(nume => {
+        randCurent++;
+        foaieDest.getRange(randCurent, colStart).setValue(nume);
+        foaieDest.getRange(randCurent, colStart + 1).setValue(rezultateCurenteF[nume].join(", "));
+      });
+
+      foaieDest.autoResizeColumns(colStart, 2);
+
+    } catch (e) {
+      Logger.log(\`\Eroare la documentul \${id}: \${e.message}\`);      // === ELIMINA TOATE „\”
+    }
+  });
+
+  SpreadsheetApp.getUi().alert("✅ Raportul complet a fost generat cu succes!");
+}
+
+	  
+		  
+		  
+		  
+		  
+		  
+	  
+
+
+
+    `;
+
+    const copyBtn = document.getElementById('copyBtn');
+    const codeBlock = document.getElementById('codeBlock');
+
+    // Injectăm codul fără caractere escapate
+    codeBlock.textContent = exampleCode.trim();
+    hljs.highlightAll();
+
+    copyBtn.addEventListener('click', () => {
+      const text = codeBlock.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+        }, 2000);
+      });
+    });
+  </script>
+</body>
+</html>
