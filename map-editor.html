@@ -1,0 +1,581 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Editor hartă</title>
+
+<style>
+:root{--bg:#f4f6fa;--card:#ffffff;--accent:#2563eb;--muted:#6b7280;}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,Arial,Helvetica,sans-serif;background:var(--bg);color:#111}
+.container{max-width:1200px;margin:18px auto;padding:18px;background:var(--card);border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.08);display:flex;flex-direction:column;gap:12px}
+.header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.header h1{font-size:16px;margin:0}
+.row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.left{width:360px;min-width:280px;padding:10px}
+.right{flex:1;min-width:300px;padding:10px}
+label{display:block;font-weight:600;margin-top:10px;color:var(--muted);font-size:13px}
+small.muted{display:block;color:var(--muted);font-size:13px;margin-top:6px}
+input[type="text"],input[type="number"],select,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #e6edf8;margin-top:6px;font-size:14px;background:#fff}
+button{padding:10px 12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;margin-top:12px}
+button.secondary{background:#6b7280}
+.panelCard{background:#fbfdff;border:1px solid #eef6ff;padding:12px;border-radius:10px}
+.mapWrap{position:relative;width:100%;aspect-ratio:1602/677;border-radius:8px;overflow:hidden;background:#ddd;border:1px solid #e6f0ff}
+.mapViewport{position:relative;width:100%;height:100%}
+.workspace{position:absolute;top:0;left:0;width:100%;height:100%;overflow:hidden;background:#000}
+.mapCanvas{position:absolute;top:0;left:0;width:100%;height:100%;transform-origin:center center;transition:transform 0.15s linear}
+.cropFrame{position:absolute;top:0;left:0;width:100%;height:100%;border:3px dashed rgba(37,99,235,0);pointer-events:none}
+.text-marker{display:inline-block;padding:6px 10px;border-radius:6px;font-weight:700;user-select:none;cursor:grab;white-space:pre;transform-origin:center center;-webkit-user-drag:none;box-sizing:border-box;border:2px solid transparent;}
+.rotate-handle{position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid var(--accent);box-shadow:0 2px 6px rgba(0,0,0,0.12);right:-8px;top:-8px;cursor:grabbing;}
+.textItem{display:flex;gap:8px;align-items:center;padding:8px;border-radius:8px;background:#fff;border:1px solid #eef6ff}
+.textItem .actions{margin-left:auto;display:flex;gap:6px}
+
+/* --- QR --- */
+.qr-box{
+  z-index:5000;
+  position:absolute;
+  background:#fff;
+  border:2px solid #2563eb;
+  border-radius:8px;
+  padding:6px;
+  cursor:move;
+  resize:both;
+  overflow:hidden;
+  width:140px;
+  height:140px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 6px 20px rgba(0,0,0,0.12);
+  touch-action:none;
+  user-select:none;
+}
+.qr-box img,.qr-box canvas{width:100%;height:100%;object-fit:contain;display:block}
+.qr-delete{
+  position:absolute;
+  top:-8px;
+  right:-8px;
+  background:#ef4444;
+  color:#fff;
+  border:none;
+  border-radius:50%;
+  width:18px;
+  height:18px;
+  font-size:12px;
+  cursor:pointer;
+  line-height:18px;
+}
+
+/* responsive */
+@media(max-width:960px){
+  .container{padding:12px}
+  .row{flex-direction:column}
+  .left{width:100%}
+  .mapCanvas{width:100%;height:100%}
+  .cropFrame{width:900px;height:379px}
+}
+</style>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.css"/>
+
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Editor hartă</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="downloadBtn">Descarcă hartă</button>
+      <button id="resetBtn" class="secondary">Resetează</button>
+    </div>
+  </div>
+
+  <div class="row">
+  
+    <div class="left">
+      <div class="panelCard">
+        <label>Caută locație</label>
+        <input id="searchInput" type="text" placeholder="Stradă, oraș..." />
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="searchBtn">Caută</button>
+          <button id="zoomHome" class="secondary">Home</button>
+        </div>
+      </div>
+
+      <div class="panelCard" style="margin-top:10px">
+        <label>Straturi hartă</label>
+        <select id="layerSelect">
+  <option value="esri">Satelit (Esri WorldImagery)</option>
+  <option value="osm">OSM Standard</option>
+  <option value="stamen-toner">Stamen Toner</option>
+  <option value="stamen-terrain">Stamen Terrain</option>
+  <option value="opentopo">OpenTopoMap</option>
+  <option value="carto-light">CartoDB Positron (light)</option>
+  <option value="carto-dark">CartoDB Dark Matter</option>
+  <option value="jawg-streets">Jawg Streets</option>
+  <option value="google-roadmap">Google Roadmap</option>
+  <option value="google-satellite">Google Satellite</option>
+  <option value="google-hybrid">Google Hybrid</option>
+</select>
+        <label style="margin-top:10px">Poligon — culoare</label>
+        <input id="polyColor" type="color" value="#ff3300"/>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button id="drawPolyBtn">Desenează poligon</button>
+          <button id="clearPolys" class="secondary">Șterge poligoane</button>
+        </div>
+      </div>
+
+      <div class="panelCard" style="margin-top:10px">
+        <label>Rotire hartă (grade)</label>
+        <input id="rotRange" type="range" min="0" max="360" value="0"/>
+        <div style="display:flex;justify-content:space-between"><small class="muted">0°</small><small id="rotValue" class="muted">0°</small></div>
+      </div>
+
+      <div class="panelCard" style="margin-top:10px">
+        <h3 style="margin:0;font-size:14px">Adaugă texte</h3>
+        <label>Text</label>
+        <textarea id="newText" rows="3" placeholder="Scrie textul; ENTER = newline"></textarea>
+        <label>Font size (px)</label>
+        <input id="fontSize" type="number" value="20" min="8" />
+        <label>Text color</label>
+        <input id="textColor" type="color" value="#ffffff"/>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <label style="margin:0;font-weight:600">Background</label>
+          <input id="bgToggle" type="checkbox" checked/>
+          <label style="margin-left:8px">Opacity</label>
+          <input id="bgOpacity" type="range" min="0" max="1" step="0.05" value="0.6" style="flex:1"/>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+          <label style="margin:0;font-weight:600">Contur</label>
+          <input id="strokeToggle" type="checkbox"/>
+          <input id="strokeColor" type="color" value="#000000" />
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="addTextBtn">Adaugă text pe hartă</button>
+        </div>
+        <hr/>
+        <div id="textsList" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="mapWrap">
+        <div class="mapViewport workspace" id="workspace">
+          <div id="map" class="mapCanvas"></div>
+          <div class="cropFrame" id="cropFrame"></div>
+        </div>
+      </div>
+
+      <!-- Panou QR -->
+      <div class="panelCard" id="qrPanel" style="margin-top:15px">
+        <h3 style="margin:0;font-size:14px">Generare cod QR</h3>
+        <label>Introduceți un URL</label>
+        <input id="qrUrl" type="text" placeholder="https://..." />
+        <button id="generateQrBtn">Generează cod QR pe hartă</button>
+        <small class="muted">QR-ul va apărea pe hartă, poate fi mutat, redimensionat sau șters.</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- biblioteci -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.draw/1.0.4/leaflet.draw.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/interactjs@1.10.11/dist/interact.min.js"></script>
+
+<script>
+(async function(){
+  const mapEl = document.getElementById('map');
+  const map = L.map(mapEl,{center:[44.4268, 26.1025],zoom:13,attributionControl:false,zoomControl:true,preferCanvas:true});
+  const layers = {
+  esri: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Esri'
+  }),
+  osm: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }),
+  'stamen-toner': L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/toner/{z}/{x}/{y}.png', {
+    maxZoom: 20
+  }),
+  'stamen-terrain': L.tileLayer('https://stamen-tiles.a.ssl.fastly.net/terrain/{z}/{x}/{y}.jpg', {
+    maxZoom: 18
+  }),
+  opentopo: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17,
+    attribution: '© OpenTopoMap (CC-BY-SA)'
+  }),
+  'carto-light': L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    subdomains: 'abcd',
+    attribution: '© CartoDB'
+  }),
+  'carto-dark': L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    subdomains: 'abcd',
+    attribution: '© CartoDB'
+  }),
+  'jawg-streets': L.tileLayer('https://tile.jawg.io/jawg-streets/{z}/{x}/{y}.png?access-token=demopublic', {
+    maxZoom: 22,
+    attribution: '© Jawg Maps'
+  }),
+  // === Google Layers (prin subdomenii mt0–mt3) ===
+  'google-roadmap': L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '© Google Maps'
+  }),
+  'google-satellite': L.tileLayer('https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '© Google Satellite'
+  }),
+  'google-hybrid': L.tileLayer('https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    attribution: '© Google Hybrid'
+  })
+};
+
+  layers.esri.addTo(map);
+  const drawnItems=new L.FeatureGroup();map.addLayer(drawnItems);
+  const drawControl=new L.Control.Draw({draw:{polyline:false,rectangle:false,circle:false,marker:false,circlemarker:false,polygon:{allowIntersection:false,showArea:true}},edit:{featureGroup:drawnItems,remove:true}});
+  map.addControl(drawControl);
+  const polyColorInput=document.getElementById('polyColor');
+  map.on(L.Draw.Event.CREATED,e=>{
+    const layer=e.layer;
+    if(layer.setStyle)layer.setStyle({color:polyColorInput.value,fillColor:polyColorInput.value,fillOpacity:0.35});
+    drawnItems.addLayer(layer);
+  });
+  document.getElementById('drawPolyBtn').addEventListener('click',()=>{const polyTool=new L.Draw.Polygon(map,drawControl.options.draw.polygon);polyTool.enable();});
+  document.getElementById('clearPolys').addEventListener('click',()=>drawnItems.clearLayers());
+  document.getElementById('layerSelect').addEventListener('change',e=>{const v=e.target.value;Object.values(layers).forEach(l=>map.removeLayer(l));layers[v].addTo(map);});
+  const rotRange=document.getElementById('rotRange'),rotValue=document.getElementById('rotValue'),mapCanvas=document.querySelector('.mapCanvas');
+  rotRange.addEventListener('input',()=>{const deg=Number(rotRange.value);rotValue.textContent=deg+'°';mapCanvas.style.transform=`rotate(${deg}deg)`;setTimeout(()=>map.invalidateSize(),80);});
+  document.getElementById('searchBtn').addEventListener('click',async()=>{const q=document.getElementById('searchInput').value.trim();if(!q)return alert('Introdu o locație.');try{const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`);const j=await r.json();if(!j.length)return alert('Locație negăsită.');const {lat,lon}=j[0];map.setView([+lat,+lon],18);}catch(err){alert('Eroare la căutare');}});
+  document.getElementById('zoomHome').addEventListener('click',()=>map.setView([44.4268, 26.1025],13));
+
+  const textsList=document.getElementById('textsList'),addTextBtn=document.getElementById('addTextBtn'),
+  newTextEl=document.getElementById('newText'),fontSizeEl=document.getElementById('fontSize'),
+  textColorEl=document.getElementById('textColor'),bgToggle=document.getElementById('bgToggle'),
+  bgOpacity=document.getElementById('bgOpacity'),strokeToggle=document.getElementById('strokeToggle'),
+  strokeColor=document.getElementById('strokeColor');
+  let textItems=[];
+  function renderTextsList(){textsList.innerHTML='';textItems.forEach(itm=>{
+    const div=document.createElement('div');div.className='textItem';div.innerHTML=`<div style="font-weight:700">${itm.options.text.replace(/\n/g,'↵')}</div>
+    <div class="actions"><button class="edit" data-id="${itm.id}">Edit</button><button class="delete" data-id="${itm.id}">Șterge</button></div>`;textsList.appendChild(div);
+  });
+  textsList.querySelectorAll('.delete').forEach(btn=>btn.onclick=e=>{const id=e.currentTarget.dataset.id;const idx=textItems.findIndex(t=>t.id===id);if(idx>=0){map.removeLayer(textItems[idx].marker);textItems.splice(idx,1);renderTextsList();}});
+  textsList.querySelectorAll('.edit').forEach(btn=>btn.onclick=e=>{const id=e.currentTarget.dataset.id;const itm=textItems.find(t=>t.id===id);if(itm)openEditForMarker(itm.marker);});}
+  function createTextMarker(options){const html=document.createElement('div');html.className='text-marker';html.style.fontSize=options.fontSize+'px';html.style.color=options.color;html.style.background=options.bgOn?`rgba(0,0,0,${options.bgOpacity})`:'transparent';html.style.border=options.strokeOn?`2px solid ${options.strokeColor}`:'2px solid transparent';html.style.transform=`rotate(${options.rotation||0}deg)`;html.innerText=options.text;const handle=document.createElement('div');handle.className='rotate-handle';html.appendChild(handle);const icon=L.divIcon({className:'',html:html,iconSize:null});const marker=L.marker(options.latlng||map.getCenter(),{icon,draggable:true}).addTo(map);let rotating=false;handle.addEventListener('pointerdown',ev=>{ev.preventDefault();rotating=true;document.body.style.cursor='grabbing';});window.addEventListener('pointermove',ev=>{if(!rotating)return;const rect=html.getBoundingClientRect();const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;const ang=Math.atan2(ev.clientY-cy,ev.clientX-cx)*180/Math.PI;html.style.transform=`rotate(${ang+90}deg)`;});window.addEventListener('pointerup',()=>{if(rotating){rotating=false;document.body.style.cursor='';}});html.addEventListener('dblclick',()=>openEditForMarker(marker));return marker;}
+  function openEditForMarker(marker){const itm=textItems.find(t=>t.marker===marker);if(!itm)return;newTextEl.value=itm.options.text;fontSizeEl.value=itm.options.fontSize;textColorEl.value=itm.options.color;bgToggle.checked=itm.options.bgOn;bgOpacity.value=itm.options.bgOpacity;strokeToggle.checked=itm.options.strokeOn;strokeColor.value=itm.options.strokeColor;newTextEl.dataset.editing=itm.id;window.scrollTo({top:0,behavior:'smooth'});}
+  addTextBtn.addEventListener('click',()=>{
+    const text=newTextEl.value||'Text',fontSize=+fontSizeEl.value||20,color=textColorEl.value,bgOn=bgToggle.checked,bgOp=+bgOpacity.value,strokeOn=strokeToggle.checked,strokeCol=strokeColor.value;
+    if(newTextEl.dataset.editing){
+      const id=newTextEl.dataset.editing,itm=textItems.find(t=>t.id===id);if(itm){itm.options={...itm.options,text,fontSize,color,bgOn,bgOpacity:bgOp,strokeOn,strokeColor:strokeCol};
+        const el=itm.marker.getElement().querySelector('.text-marker');el.style.fontSize=fontSize+'px';el.style.color=color;
+        el.style.background=bgOn?`rgba(0,0,0,${bgOp})`:'transparent';el.style.border=strokeOn?`2px solid ${strokeCol}`:'2px solid transparent';el.innerText=text;}
+      delete newTextEl.dataset.editing;renderTextsList();return;
+    }
+    const latlng=map.getCenter();const options={text,latlng,fontSize,color,bgOn,bgOpacity:bgOp,strokeOn,strokeColor:strokeCol,rotation:0};
+    const marker=createTextMarker(options);const id='t'+Date.now();textItems.push({id,marker,options});renderTextsList();
+  });
+
+ async function exportCropToPNG(download = true) {
+  const crop = document.getElementById('cropFrame');
+  const workspace = document.getElementById('workspace');
+  const mapContainer = document.getElementById('map');
+  const desiredW = 1602;
+  const desiredH = 677;
+  const scale = 3;
+
+  // === FIX QR: clonează QR-urile ca imagini temporare într-un strat separat ===
+  const qrLayer = document.createElement('div');
+  qrLayer.style.position = 'absolute';
+  qrLayer.style.top = 0;
+  qrLayer.style.left = 0;
+  qrLayer.style.width = '100%';
+  qrLayer.style.height = '100%';
+  qrLayer.style.pointerEvents = 'none';
+  qrLayer.style.zIndex = 99999;
+
+  workspace.appendChild(qrLayer);
+
+  document.querySelectorAll('.qr-box canvas').forEach(cv => {
+    try {
+      const rect = cv.parentNode.getBoundingClientRect();
+      const wsRect = workspace.getBoundingClientRect();
+      const img = document.createElement('img');
+      img.src = cv.toDataURL('image/png');
+      img.style.position = 'absolute';
+      img.style.left = (rect.left - wsRect.left) + 'px';
+      img.style.top = (rect.top - wsRect.top) + 'px';
+      img.style.width = rect.width + 'px';
+      img.style.height = rect.height + 'px';
+      qrLayer.appendChild(img);
+    } catch (err) {
+      console.warn('Nu pot converti QR canvas:', err);
+    }
+  });
+
+  // ascunde temporar doar controalele Leaflet și handle-urile de rotire,
+  document.querySelectorAll('.leaflet-control-container, .rotate-handle')
+    .forEach(el => el.style.visibility = 'hidden');
+
+  // așteaptă imaginile să se încarce
+  await new Promise(resolve => {
+    const imgs = mapContainer.querySelectorAll('img');
+    if (!imgs.length) return resolve();
+    let loaded = 0;
+    imgs.forEach(img => {
+      if (img.complete) { if (++loaded === imgs.length) resolve(); }
+      else img.onload = img.onerror = () => { if (++loaded === imgs.length) resolve(); };
+    });
+  });
+
+  // capturează întreg workspace-ul
+  const canvasFull = await html2canvas(workspace, {
+    useCORS: true,
+    backgroundColor: null,
+    scale,
+    logging: false,
+    x: 0,
+    y: 0,
+    width: workspace.clientWidth,
+    height: workspace.clientHeight
+  });
+
+  // calculează zona exactă a cropFrame-ului
+  const wsRect = workspace.getBoundingClientRect();
+  const cropRect = crop.getBoundingClientRect();
+  const sx = Math.round((cropRect.left - wsRect.left) * scale);
+  const sy = Math.round((cropRect.top - wsRect.top) * scale);
+  const sWidth = Math.round(cropRect.width * scale);
+  const sHeight = Math.round(cropRect.height * scale);
+
+  // canvas final 1602x677
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = desiredW;
+  finalCanvas.height = desiredH;
+  const ctx = finalCanvas.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(canvasFull, sx, sy, sWidth, sHeight, 0, 0, desiredW, desiredH);
+
+  // reactivează controalele
+  document.querySelectorAll('.leaflet-control-container, .rotate-handle')
+    .forEach(el => el.style.visibility = '');
+
+  // șterge stratul temporar de QR-uri
+  qrLayer.remove();
+
+  // obține datele PNG
+  const imgData = finalCanvas.toDataURL('image/png');
+  const binary = atob(imgData.split(',')[1]);
+  const array = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) array[i] = binary.charCodeAt(i);
+
+  // adaugă chunk pHYs (300 DPI)
+  const ppm = Math.round(300 / 0.0254);
+  const pHYsChunk = new Uint8Array([
+    0x00, 0x00, 0x00, 0x09,
+    0x70, 0x48, 0x59, 0x73,
+    (ppm >> 24) & 0xff, (ppm >> 16) & 0xff, (ppm >> 8) & 0xff, ppm & 0xff,
+    (ppm >> 24) & 0xff, (ppm >> 16) & 0xff, (ppm >> 8) & 0xff, ppm & 0xff,
+    0x01,
+    0x00, 0x00, 0x00, 0x00
+  ]);
+
+  const ihdrEnd = array.findIndex((_, i) =>
+    array[i] === 0x49 && array[i + 1] === 0x44 && array[i + 2] === 0x41 && array[i + 3] === 0x54
+  );
+  const beforeIHDR = array.slice(0, ihdrEnd - 4);
+  const afterIHDR = array.slice(ihdrEnd - 4);
+
+  const finalArray = new Uint8Array(beforeIHDR.length + pHYsChunk.length + afterIHDR.length);
+  finalArray.set(beforeIHDR, 0);
+  finalArray.set(pHYsChunk, beforeIHDR.length);
+  finalArray.set(afterIHDR, beforeIHDR.length + pHYsChunk.length);
+
+  const blob = new Blob([finalArray], { type: 'image/png' });
+
+  if (download) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'harta_1602x677_300dpi.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  return blob;
+}
+
+
+
+
+
+
+
+
+  document.getElementById('downloadBtn').addEventListener('click',async()=>{
+    const b=document.getElementById('downloadBtn');
+    b.disabled=true;b.textContent='Generez...';
+    try{await exportCropToPNG(true);}catch(e){alert(e.message);}
+    b.disabled=false;b.textContent='Descarcă hartă';
+  });
+
+  document.getElementById('resetBtn').addEventListener('click',()=>{
+    drawnItems.clearLayers();textItems.forEach(t=>map.removeLayer(t.marker));textItems=[];textsList.innerHTML='';
+    // Șterge și QR-urile din workspace (doar cele create de noi)
+    document.querySelectorAll('.qr-box').forEach(el=>el.remove());
+  });
+
+  window.addEventListener('resize',()=>map.invalidateSize());
+  map.setView([44.4268, 26.1025],13);
+  setInterval(()=>map.invalidateSize(),1000);
+
+  // === CLICK PE HARTĂ → COORDONATE (activare manuală) ===
+let showCoords = false;
+const coordPopup = L.popup();
+
+// buton în colțul din dreapta sus al hărții
+const toggleBtn = L.control({position: 'topright'});
+toggleBtn.onAdd = function() {
+  const btn = L.DomUtil.create('button', 'leaflet-bar');
+  btn.innerHTML = '📍 Coordonate';
+  btn.style.background = '#2563eb';
+  btn.style.color = '#fff';
+  btn.style.border = 'none';
+  btn.style.padding = '6px 10px';
+  btn.style.cursor = 'pointer';
+  btn.style.borderRadius = '6px';
+  btn.onclick = function() {
+    showCoords = !showCoords;
+    btn.style.background = showCoords ? '#1e40af' : '#2563eb';
+  };
+  return btn;
+};
+toggleBtn.addTo(map);
+
+map.on('click', function(e) {
+  if (!showCoords) return; // 🔒 popup doar dacă e activat
+
+  const lat = e.latlng.lat.toFixed(6);
+  const lng = e.latlng.lng.toFixed(6);
+  const url = `https://www.google.com/maps?q=${lat},${lng}`;
+
+  const content = `
+    <div style="font-size:13px;min-width:180px">
+      <b>Coordonate:</b><br>${lat}, ${lng}<br>
+      <input id="coordUrl" type="text" value="${url}" readonly style="width:100%;margin-top:6px;font-size:12px;padding:6px;border-radius:6px;border:1px solid #e6edf8">
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button id="copyUrlBtn" style="padding:6px 8px;font-size:12px">Copiază URL</button>
+        <button id="addToQrInputBtn" style="padding:6px 8px;font-size:12px;background:#6b7280">Trimite la QR</button>
+      </div>
+    </div>
+  `;
+  coordPopup
+    .setLatLng(e.latlng)
+    .setContent(content)
+    .openOn(map);
+
+  setTimeout(() => {
+    const copyBtn = document.getElementById('copyUrlBtn');
+    const addBtn = document.getElementById('addToQrInputBtn');
+    if(copyBtn) {
+      copyBtn.onclick = async () => {
+        const input = document.getElementById('coordUrl');
+        await navigator.clipboard.writeText(input.value);
+        copyBtn.textContent = 'Copiat!';
+        setTimeout(()=>copyBtn.textContent='Copiază URL',1500);
+      };
+    }
+    if(addBtn){
+      addBtn.onclick = () => {
+        const v = document.getElementById('coordUrl').value;
+        const qrInput = document.getElementById('qrUrl');
+        if(qrInput){
+          qrInput.value = v;
+          qrInput.focus();
+        }
+        coordPopup.remove();
+      };
+    }
+  }, 50);
+});
+
+
+
+  /* === QR actualizat === */
+  const workspaceEl = document.getElementById('workspace');
+  document.getElementById('generateQrBtn').addEventListener('click', () => {
+    const url = document.getElementById('qrUrl').value.trim();
+    if (!url) return alert('Introduceți un URL.');
+
+    const qrDiv = document.createElement('div');
+    qrDiv.className = 'qr-box';
+    qrDiv.style.zIndex = 5000;
+    qrDiv.style.left = '40px';
+    qrDiv.style.top = '40px';
+
+    const del = document.createElement('button');
+    del.className = 'qr-delete';
+    del.textContent = '×';
+    qrDiv.appendChild(del);
+    del.onclick = () => qrDiv.remove();
+
+    const qrInner = document.createElement('div');
+    qrInner.style.width = '100%';
+    qrInner.style.height = '100%';
+    qrDiv.appendChild(qrInner);
+    new QRCode(qrInner, { text: url, width: 200, height: 200 });
+
+    workspaceEl.appendChild(qrDiv);
+
+    // InteractJS - drag & resize
+    interact(qrDiv).draggable({
+      modifiers: [interact.modifiers.restrictRect({ restriction: workspaceEl, endOnly: true })],
+      listeners: {
+        move(event) {
+          const t = event.target;
+          const x = (parseFloat(t.getAttribute('data-x')) || 0) + event.dx;
+          const y = (parseFloat(t.getAttribute('data-y')) || 0) + event.dy;
+          t.style.transform = `translate(${x}px, ${y}px)`;
+          t.setAttribute('data-x', x);
+          t.setAttribute('data-y', y);
+        }
+      }
+    }).resizable({
+      edges: { left:true, right:true, bottom:true, top:true },
+      modifiers: [
+        interact.modifiers.restrictEdges({ outer: workspaceEl }),
+        interact.modifiers.restrictSize({ min:{ width:60, height:60 }, max:{ width:workspaceEl.clientWidth, height:workspaceEl.clientHeight } })
+      ],
+      listeners: {
+        move(event) {
+          const t = event.target;
+          let x = parseFloat(t.getAttribute('data-x')) || 0;
+          let y = parseFloat(t.getAttribute('data-y')) || 0;
+          t.style.width = event.rect.width + 'px';
+          t.style.height = event.rect.height + 'px';
+          x += event.deltaRect.left;
+          y += event.deltaRect.top;
+          t.style.transform = `translate(${x}px, ${y}px)`;
+          t.setAttribute('data-x', x);
+          t.setAttribute('data-y', y);
+
+          // redesenează QR clar la noua dimensiune
+          const inner = t.querySelector('div');
+          inner.innerHTML = '';
+          new QRCode(inner, { text: url, width: event.rect.width, height: event.rect.height });
+        }
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

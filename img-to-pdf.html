@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inserare imagine în câmp PDF (Text3) — cu suport SVG</title>
+  <style>
+  
+ 
+
+
+    :root{
+      --bg:#f4f6fa; --card:#ffffff; --accent:#2563eb; --muted:#6b7280;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,system-ui,Arial,Helvetica,sans-serif;background:var(--bg);color:#111;padding:20px;display:flex;justify-content:center}
+    .app{width:100%;max-width:1100px;background:var(--card);border-radius:12px;box-shadow:0 10px 30px rgba(2,6,23,0.08);display:grid;grid-template-columns:360px 1fr;gap:18px;padding:18px}
+    .panel{padding:10px}
+    h1{font-size:16px;margin:4px 0 10px}
+    label{display:block;font-weight:600;margin-top:10px;color:var(--muted);font-size:13px}
+    input[type="file"], input[type="text"], input[type="number"], select {width:100%;padding:9px;border-radius:8px;border:1px solid #e6edf8;margin-top:6px;font-size:14px;background:#fff}
+    button{padding:10px 12px;border-radius:10px;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;margin-top:12px}
+    button.secondary{background:#6b7280}
+    .muted{color:var(--muted);font-size:13px;margin-top:8px}
+    .preview{padding:12px;border-radius:10px;background:#fbfdff;border:1px solid #eef6ff;min-height:520px;display:flex;flex-direction:column}
+    #pdfCanvas{width:100%;border-radius:8px;border:1px solid #e6f0ff;display:block;max-height:820px}
+    .infoRow{display:flex;justify-content:space-between;align-items:center}
+    .coords{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:8px}
+    footer{font-size:12px;color:var(--muted);margin-top:12px}
+    .overlayRect{position:absolute;border:2px dashed rgba(37,99,235,0.9);pointer-events:none;mix-blend-mode:multiply}
+    @media (max-width:960px){.app{grid-template-columns:1fr;padding:12px}.panel{order:2}.preview{order:1}}
+  </style>
+</head>
+<body>
+
+
+
+  <div class="app" role="main">
+    <div class="panel" aria-label="Control panel">
+      <h1>Inserare imagine în fișierul <span style="color:var(--accent)">S-12</span></h1>
+
+      <label>PDF (selectează fișierul S-12)</label>
+      <input id="pdfInput" type="file" accept="application/pdf">
+
+      <label>Imagine (PNG/JPG/SVG)</label>
+      <input id="imgInput" type="file" accept="image/*,image/svg+xml">
+
+      <label>Localitatea</label>
+      <input id="text1" type="text" placeholder="Ex: București">
+
+      <label>Terit. nr.</label>
+      <input id="text2" type="text" placeholder="Ex: 01">
+
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="findFieldBtn" class="secondary" disabled>Identifică element</button>
+        <button id="previewBtn" disabled>Previzualizează</button>
+      </div>
+
+      <div class="muted" id="status">Alege un PDF pentru a începe.</div>
+
+      <hr style="margin:12px 0;border:none;border-top:1px solid #eef6ff">
+
+      <h3 style="margin:0;font-size:14px">Fallback manual (dacă nu găsește Text3)</h3>
+      <label>Pagina (1 = prima)</label>
+      <input id="manualPage" type="number" min="1" value="1">
+
+      <div class="coords">
+        <div><label>X (puncte)</label><input id="manualX" type="number" step="1" value="60"></div>
+        <div><label>Y (puncte)</label><input id="manualY" type="number" step="1" value="380"></div>
+        <div><label>Width (puncte)</label><input id="manualW" type="number" step="1" value="420"></div>
+        <div><label>Height (puncte)</label><input id="manualH" type="number" step="1" value="180"></div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button id="useManualBtn">Folosește manual</button>
+        <button id="downloadBtn" disabled>Descarcă PDF</button>
+      </div>
+
+      <footer>Coordonatele sunt în puncte PDF (1 punct = 1/72 inch). Dacă detectarea automată nu găsește câmpul, folosește manual.</footer>
+    </div>
+
+    <div class="preview" aria-label="Preview area">
+      <div class="infoRow">
+        <strong>Previzualizare PDF</strong>
+        <div class="muted" id="foundInfo">Nicio informație</div>
+      </div>
+      <div style="position:relative;flex:1;margin-top:8px">
+        <canvas id="pdfCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+
+  <script>
+  (function(){
+    const pdfInput = document.getElementById('pdfInput');
+    const imgInput = document.getElementById('imgInput');
+    const findFieldBtn = document.getElementById('findFieldBtn');
+    const previewBtn = document.getElementById('previewBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const useManualBtn = document.getElementById('useManualBtn');
+    const statusEl = document.getElementById('status');
+    const foundInfo = document.getElementById('foundInfo');
+    const canvas = document.getElementById('pdfCanvas');
+
+    let pdfArrayBuffer = null;
+    let imageDataUrl = null;
+    let lastDetected = null;
+    let generatedPdfBlobUrl = null;
+    let overlayEl = null;
+
+    function setStatus(txt){ statusEl.textContent = txt; }
+    function clearCanvas(){ const ctx = canvas.getContext('2d'); ctx.clearRect(0,0,canvas.width,canvas.height); }
+    function removeOverlay(){ if(overlayEl){ overlayEl.remove(); overlayEl=null; } }
+
+    // helper: if the user loaded an SVG file (not a dataURL), convert file to dataURL
+    imgInput.addEventListener('change', (e)=>{
+      const f = e.target.files && e.target.files[0];
+      if(!f) return;
+      const reader = new FileReader();
+      reader.onload = ()=> {
+        imageDataUrl = reader.result;
+        setStatus('Imagine încărcată');
+      };
+      reader.readAsDataURL(f);
+    });
+
+    // function to convert an SVG data URL (or raw SVG string) to a PNG data URL
+    async function convertSvgDataUrlToPngDataUrl(svgDataUrl, scale = 1) {
+      return new Promise((resolve, reject) => {
+        try {
+          // create image from svg data url
+          const img = new Image();
+          // Important: set crossOrigin in case (dataURL should be same-origin)
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            try {
+              const w = img.width * scale || img.naturalWidth || 1000;
+              const h = img.height * scale || img.naturalHeight || 1000;
+              const c = document.createElement('canvas');
+              c.width = w;
+              c.height = h;
+              const ctx = c.getContext('2d');
+              // clear and draw white background (optional)
+              ctx.clearRect(0,0,w,h);
+              ctx.drawImage(img, 0, 0, w, h);
+              const png = c.toDataURL('image/png');
+              resolve(png);
+            } catch (err) { reject(err); }
+          };
+          img.onerror = (e) => reject(new Error('Eroare la încărcarea SVG-ului pentru conversie.'));
+          img.src = svgDataUrl;
+          // If SVG doesn't have intrinsic dimensions, try to infer by decoding content width/height
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+
+    pdfInput.addEventListener('change', async (e)=>{
+      const f = e.target.files && e.target.files[0];
+      if(!f){ setStatus('Niciun fișier PDF selectat.'); findFieldBtn.disabled=true; previewBtn.disabled=true; return; }
+      pdfArrayBuffer = await f.arrayBuffer();
+      setStatus(`PDF selectat: ${f.name}`);
+      findFieldBtn.disabled = false;
+      previewBtn.disabled = true;
+      downloadBtn.disabled = true;
+      foundInfo.textContent = 'Nicio detectare încă.';
+      lastDetected = null;
+      clearCanvas(); removeOverlay();
+    });
+
+    findFieldBtn.addEventListener('click', async ()=>{
+      if(!pdfArrayBuffer){ alert('Selectează un PDF mai întâi.'); return; }
+      setStatus('Caut câmpuri în PDF (Text3)...');
+      foundInfo.textContent = 'Căutare...'; lastDetected = null; removeOverlay();
+      try{
+        const bufCopy = pdfArrayBuffer.slice(0);
+        const pdf = await pdfjsLib.getDocument({data: bufCopy}).promise;
+        const numPages = pdf.numPages;
+        let found = null;
+        for(let p=1;p<=numPages;p++){
+          const page = await pdf.getPage(p);
+          const annots = await page.getAnnotations();
+          for(const a of annots){
+            const fn = (a.fieldName || a.field_name || a.name || '').toString();
+            if(!fn) continue;
+            if(fn.toLowerCase().includes('text3') || fn.toLowerCase().includes('text 3')){
+              const r = a.rect;
+              const x = Math.min(r[0], r[2]);
+              const y = Math.min(r[1], r[3]);
+              const w = Math.abs(r[2]-r[0]);
+              const h = Math.abs(r[3]-r[1]);
+              found = { page: p, x, y, width: w, height: h, fieldName: fn, rectRaw: r };
+              break;
+            }
+          }
+          if(found) break;
+        }
+        if(found){
+          lastDetected = found;
+          foundInfo.textContent = `Găsit ${found.fieldName} — pag ${found.page}, x=${Math.round(found.x)}, y=${Math.round(found.y)}, w=${Math.round(found.width)}, h=${Math.round(found.height)}`;
+          setStatus('Câmpul Text3 detectat. Apasă Previzualizează.');
+          document.getElementById('manualPage').value = found.page;
+          document.getElementById('manualX').value = Math.round(found.x);
+          document.getElementById('manualY').value = Math.round(found.y);
+          document.getElementById('manualW').value = Math.round(found.width);
+          document.getElementById('manualH').value = Math.round(found.height);
+          previewBtn.disabled = false;
+        } else {
+          setStatus('Nu am găsit Text3 automat. Folosește fallback-ul manual.');
+          foundInfo.textContent = 'Text3 nu găsit.';
+          previewBtn.disabled = false;
+        }
+      }catch(err){ console.error(err); setStatus('Eroare la citirea PDF-ului.'); foundInfo.textContent = 'Eroare'; previewBtn.disabled = false; }
+    });
+
+    useManualBtn.addEventListener('click', ()=>{
+      const page = parseInt(document.getElementById('manualPage').value || '1',10);
+      const x = Number(document.getElementById('manualX').value || '0');
+      const y = Number(document.getElementById('manualY').value || '0');
+      const width = Number(document.getElementById('manualW').value || '100');
+      const height = Number(document.getElementById('manualH').value || '100');
+      lastDetected = { page, x, y, width, height, fieldName: 'manual' };
+      foundInfo.textContent = `Set manual — pag ${page}, x=${x}, y=${y}, w=${width}, h=${height}`;
+      setStatus('Coordonate manuale setate. Apasă Previzualizează.');
+      previewBtn.disabled = false;
+    });
+
+    // Main preview/generate handler — updated to support SVG conversion
+    previewBtn.addEventListener('click', async ()=>{
+      if(!pdfArrayBuffer){ alert('Selectează un PDF mai întâi.'); return; }
+      if(!imageDataUrl && !confirm('Nu ai furnizat o imagine — vrei doar să previzualizezi PDF-ul fără imagine?')) return;
+      setStatus('Generez PDF-ul...');
+      try{
+        const bufForPdfLib = pdfArrayBuffer.slice(0);
+        const pdfDoc = await PDFLib.PDFDocument.load(bufForPdfLib);
+        const form = pdfDoc.getForm();
+
+        // complete Text1/Text2 fields if present (unchanged behavior)
+        const text1Val = document.getElementById('text1').value || '';
+        const text2Val = document.getElementById('text2').value || '';
+        let field1 = null, field2 = null;
+        try { field1 = form.getTextField('Text1'); } catch {}
+        try { field2 = form.getTextField('Text2'); } catch {}
+        if(field1 && text1Val) field1.setText(text1Val);
+        if(field2 && text2Val) field2.setText(text2Val);
+        if (field1 && text1Val) {
+  field1.setText(text1Val);
+  try { field1.updateAppearances(PDFLib.StandardFonts.Helvetica); } catch {}
+  field1.acroField.dict.set(PDFLib.PDFName.of('DA'), PDFLib.PDFString.of('/Helv 11 Tf 0 g')); // forțează font 11pt
+}
+
+if (field2 && text2Val) {
+  field2.setText(text2Val);
+  try { field2.updateAppearances(PDFLib.StandardFonts.Helvetica); } catch {}
+  field2.acroField.dict.set(PDFLib.PDFName.of('DA'), PDFLib.PDFString.of('/Helv 11 Tf 0 g')); // forțează font 11pt
+}
+
+
+
+        // prepare image: if SVG -> convert to PNG dataURL first
+        let finalImageDataUrl = imageDataUrl;
+        if(imageDataUrl && imageDataUrl.startsWith('data:image/svg')) {
+          // convert svg to png, try to keep original SVG intrinsic size if possible
+          try {
+            // attempt conversion at 1:1 first
+            finalImageDataUrl = await convertSvgDataUrlToPngDataUrl(imageDataUrl, 1);
+          } catch (err) {
+            // fallback: try with scale 2 for higher DPI
+            console.warn('Conversie SVG->PNG eșuat la scale=1, încerc scale=2', err);
+            finalImageDataUrl = await convertSvgDataUrlToPngDataUrl(imageDataUrl, 2);
+          }
+        }
+
+        // embed image if present
+        let embeddedImage = null, imgW=0, imgH=0;
+        if(finalImageDataUrl){
+          if(finalImageDataUrl.startsWith('data:image/jpeg') || finalImageDataUrl.startsWith('data:image/jpg')){
+            embeddedImage = await pdfDoc.embedJpg(finalImageDataUrl);
+          } else {
+            // treat everything else as PNG (including converted SVG)
+            embeddedImage = await pdfDoc.embedPng(finalImageDataUrl);
+          }
+          imgW = embeddedImage.width; imgH = embeddedImage.height;
+        }
+
+        // determine target rect
+        let target = lastDetected;
+        if(!target){
+          const page = parseInt(document.getElementById('manualPage').value || '1',10);
+          const x = Number(document.getElementById('manualX').value || '0');
+          const y = Number(document.getElementById('manualY').value || '0');
+          const width = Number(document.getElementById('manualW').value || '100');
+          const height = Number(document.getElementById('manualH').value || '100');
+          target = { page, x, y, width, height, fieldName:'manual' };
+        }
+
+        const pageIndex = Math.max(0, target.page - 1);
+        const pages = pdfDoc.getPages();
+        if(pageIndex < 0 || pageIndex >= pages.length) throw new Error('Pagina specificată nu există în PDF.');
+        const page = pages[pageIndex];
+
+        if(embeddedImage){
+          const targetW = target.width;
+          const targetH = target.height;
+          const imgAspect = imgW / imgH;
+          let drawW = targetW, drawH = drawW / imgAspect;
+          if(drawH > targetH){ drawH = targetH; drawW = drawH * imgAspect; }
+          const drawX = target.x + (targetW - drawW)/2;
+          const drawY = target.y + (targetH - drawH)/2;
+          page.drawImage(embeddedImage, { x: drawX, y: drawY, width: drawW, height: drawH });
+        }
+
+        const pdfBytes = await pdfDoc.save();
+        if(generatedPdfBlobUrl) URL.revokeObjectURL(generatedPdfBlobUrl);
+        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+        generatedPdfBlobUrl = URL.createObjectURL(blob);
+
+        await renderPdfPreview(generatedPdfBlobUrl, pageIndex, target);
+        downloadBtn.disabled = false;
+        downloadBtn.onclick = ()=>{ const a=document.createElement('a'); a.href=generatedPdfBlobUrl; a.download='fisa_completata.pdf'; a.click(); };
+        setStatus('PDF generat — poți descărca sau previzualiza.');
+      }catch(err){ console.error(err); setStatus('Eroare la generare.'); alert('Eroare: '+(err.message||err)); }
+    });
+
+    async function renderPdfPreview(url, pageIndex=0, target=null){
+      removeOverlay();
+      const pdf = await pdfjsLib.getDocument({url}).promise;
+      const page = await pdf.getPage(pageIndex+1);
+      const viewport = page.getViewport({ scale:1.5 });
+      canvas.width = viewport.width; canvas.height = viewport.height;
+      await page.render({ canvasContext:canvas.getContext('2d'), viewport }).promise;
+      if (target && target.rectRaw) {
+  const vpRect = viewport.convertToViewportRectangle(target.rectRaw);
+  let x1 = Math.min(vpRect[0], vpRect[2]),
+      y1 = Math.min(vpRect[1], vpRect[3]),
+      x2 = Math.max(vpRect[0], vpRect[2]),
+      y2 = Math.max(vpRect[1], vpRect[3]);
+
+  // ✅ Corecție: aliniază mai bine chenarul cu zona reală Text3
+  const adjustX = -3;   // mută puțin la stânga
+  const adjustY = -2;   // mută puțin în jos
+  const adjustW = 6;    // lărgește puțin
+  const adjustH = 4;    // înalță puțin
+
+  x1 += adjustX;
+  y1 += adjustY;
+  x2 += adjustX + adjustW;
+  y2 += adjustY + adjustH;
+
+  overlayEl = document.createElement('div');
+  overlayEl.className = 'overlayRect';
+  const parent = canvas.parentElement;
+  parent.style.position = 'relative';
+  overlayEl.style.left = x1 + 'px';
+  overlayEl.style.top = y1 + 'px';
+  overlayEl.style.width = (x2 - x1) + 'px';
+  overlayEl.style.height = (y2 - y1) + 'px';
+  overlayEl.style.border = '2px dashed rgba(37,99,235,0.9)';
+  overlayEl.style.background = 'rgba(37,99,235,0.04)';
+  overlayEl.style.position = 'absolute';
+  parent.appendChild(overlayEl);
+}
+
+    }
+
+    // small UX: enable preview when image or PDF loaded
+    imgInput.addEventListener('change', ()=>{ if(pdfArrayBuffer) previewBtn.disabled=false; });
+
+    // Prevent memory leaks
+    window.addEventListener('beforeunload', ()=>{ if(generatedPdfBlobUrl) URL.revokeObjectURL(generatedPdfBlobUrl); });
+  })();
+  </script>
+
+
+</body>
+</html>
