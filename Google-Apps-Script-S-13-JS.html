@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Code Viewer & Copier</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --secondary: #10b981;
+      --dark: #0f172a;
+      --light: #f8fafc;
+      --radius: 12px;
+      --transition: all 0.3s ease;
+      --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
+    }
+
+    body {
+      background: linear-gradient(135deg, var(--dark), #1e293b);
+      color: var(--light);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      max-width: 900px;
+      width: 100%;
+      padding: 25px;
+      backdrop-filter: blur(8px);
+      transition: var(--transition);
+    }
+
+    .panel:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .title {
+      font-size: 2.2rem;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      margin-bottom: 5px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      font-size: 1rem;
+    }
+
+    pre {
+      position: relative;
+      background: #1e293b;
+      padding: 20px;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      overflow-x: auto;
+      line-height: 1.5;
+    }
+
+    code {
+      font-family: 'Courier New', monospace;
+    }
+
+    .copy-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: var(--primary);
+      border: none;
+      color: white;
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+    }
+
+    .copy-btn:hover {
+      background: var(--primary-dark);
+      transform: translateY(-1px);
+    }
+
+    footer {
+      text-align: center;
+      margin-top: 25px;
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
+
+    @media (max-width: 600px) {
+      .title {
+        font-size: 1.6rem;
+      }
+      pre {
+        font-size: 0.85rem;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="panel">
+  <header>
+    <h1 class="title">Google Apps Script - S-13</h1>
+    <p class="subtitle">Click the button to copy the code below</p>
+  </header>
+
+  <!-- Paragraf explicativ deasupra codului -->
+  <p style="margin-bottom: 15px; color: #cbd5e1;">
+    Acest bloc de cod este un exemplu de script Google Apps Script care gestionează meniuri și evidențiere automată în Google Sheets. 
+    Puteți vedea funcții pentru crearea unui meniu personalizat și afișarea unei sidebar.
+  </p>
+
+  <pre>
+    <button class="copy-btn" id="copyBtn"><i class="fas fa-copy"></i> Copy</button>
+    <code id="codeBlock" class="language-javascript"></code>
+  </pre>
+
+  <!-- Paragraf explicativ dedesubtul codului -->
+  <p style="margin-top: 15px; color: #cbd5e1;">
+    Codul include și funcționalități de arhivare, evidențiere a rândurilor în funcție de date și gestionarea evenimentului onEdit. 
+    Acest exemplu poate fi extins sau adaptat pentru orice foaie Google Sheet personalizată.
+  </p>
+
+  <footer>
+    Code Viewer © 2025 | Petru
+  </footer>
+</div>
+
+  <script>
+    // Codul real pe care vrei să-l afișezi:
+    const exampleCode = `
+
+
+
+
+
+/*****************************************************
+* Meniu S-13
+*****************************************************/
+function onOpen() {
+  var ui = SpreadsheetApp.getUi();
+  ui.createMenu("S-13")
+    .addSubMenu(
+      ui.createMenu("Acțiuni")
+        .addItem("Tablou de bord", "showS13Sidebar")
+    )
+    .addToUi();
+}
+
+/*****************************************************
+* Sidebar Acțiuni S-13
+*****************************************************/
+function showS13Sidebar() {
+  var html = HtmlService.createHtmlOutputFromFile("SidebarS13")
+    .setTitle("Acțiuni - Tablou de bord");
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/*****************************************************
+* Evidențiere automată
+*****************************************************/
+function colorRowsTrigger(sheetName) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return "❌ Nu am găsit foaia '" + sheetName + "'.";
+
+  var startRow = 4;
+  var lastRow = sheet.getLastRow();
+  var numCols = 8; // B → I
+  if (lastRow < startRow) return "ℹ️ Nu există date de procesat în '" + sheetName + "'.";
+
+  var range = sheet.getRange(startRow, 2, lastRow - startRow + 1, numCols);
+  var values = range.getValues();
+  var today = new Date();
+
+  // Resetăm toate culorile
+  range.setBackground(null);
+
+  var red = "#ff9999";
+  var yellow = "#fff2cc";
+
+  for (var i = 0; i < values.length; i++) {
+    var repartizare = values[i][2]; // col. D (index 2 în B→I)
+    if (repartizare instanceof Date) {
+      var diff = Math.floor((today - repartizare) / (1000 * 60 * 60 * 24));
+      if (diff > 120) {
+        sheet.getRange(startRow + i, 2, 1, numCols).setBackground(red);
+      } else if (diff > 60) {
+        sheet.getRange(startRow + i, 2, 1, numCols).setBackground(yellow);
+      }
+    }
+  }
+  return "✅ Evidențiere completă pentru '" + sheetName + "'.";
+}
+
+/*****************************************************
+* Ștergere evidențieri
+*****************************************************/
+function clearHighlights() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheets = ["S-13"];
+  sheets.forEach(function(name) {
+    var sheet = ss.getSheetByName(name);
+    if (sheet) {
+      var startRow = 4;
+      var lastRow = sheet.getLastRow();
+      var numCols = 8;
+      if (lastRow >= startRow) {
+        sheet.getRange(startRow, 2, lastRow - startRow + 1, numCols).setBackground(null);
+      }
+    }
+  });
+  return "✅ Evidențierile au fost șterse.";
+}
+
+/*****************************************************
+* Ștergere înregistrări din foaia Arhiva
+*****************************************************/
+function stergeInregistrariArhiva() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Arhiva");
+  if (!sheet) return "❌ Nu am găsit foaia 'Arhiva'.";
+
+  var startRow = 4;
+  var lastRow = sheet.getLastRow();
+  var numCols = 7; // B → H
+  if (lastRow >= startRow) {
+    var range = sheet.getRange(startRow, 2, lastRow - startRow + 1, numCols);
+    range.clearContent();
+  }
+  return "🗑️ Am șters toate înregistrările din 'Arhiva'.";
+}
+
+/*****************************************************
+* onEdit — Arhivare + evidențiere automată + toast
+*****************************************************/
+function onEdit(e) {
+  try {
+    var ss = e.source || SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = e.range.getSheet();
+    var sheetName = "S-13";
+    var archiveName = "Arhiva";
+    var colAction = 9;       // I
+    var colReturnDate = 5;   // E
+    var colLastReturn = 3;   // C
+    var colTip = 7;          // G
+    var tableStartRow = 4;
+
+    if (sheet.getName() === sheetName && e.range.getColumn() === colAction) {
+      var val = (e.value || "").toString().trim().toLowerCase();
+      if (val.indexOf("arhive") !== -1) {
+        var row = e.range.getRow();
+
+        // 📌 Salvăm valoarea + validarea din G
+        var gCell = sheet.getRange(row, colTip);
+        var gValue = gCell.getValue();
+        var gValidation = gCell.getDataValidation();
+
+        // 🧽 Dezactivăm validarea G temporar pentru a evita erorile
+        gCell.clearDataValidations();
+
+        // 1) Copiază B→H în Arhiva
+        var rowData = sheet.getRange(row, 2, 1, 7).getValues();
+        var archiveSheet = ss.getSheetByName(archiveName) || ss.insertSheet(archiveName);
+        archiveSheet.appendRow([""].concat(rowData[0])); // adaugă în B→H
+
+        // 2) Mută valoarea din E în C (ultima returnare)
+        var returnDate = sheet.getRange(row, colReturnDate).getValue();
+        sheet.getRange(row, colLastReturn).setValue(returnDate);
+
+        // 3) Golește D,E,F și I (G rămâne neatins)
+        sheet.getRange(row, 4).clearContent();
+        sheet.getRange(row, 5).clearContent();
+        sheet.getRange(row, 6).clearContent();
+        sheet.getRange(row, colAction).clearContent();
+
+        // 4) Restaurăm validarea + valoarea G
+        if (gValidation) gCell.setDataValidation(gValidation);
+        if (gValue) gCell.setValue(gValue);
+
+        // 5) Sortare după col. C (doar dacă avem date)
+        var lastRow = sheet.getLastRow();
+        if (lastRow >= tableStartRow) {
+          var rangeToSort = sheet.getRange(tableStartRow, 2, lastRow - tableStartRow + 1, 8);
+          rangeToSort.sort({ column: colLastReturn, ascending: true });
+        }
+
+        // 🟢 6) Toast în colț dreapta jos
+        ss.toast("✅ Teritoriu arhivat", "S-13", 3);
+      }
+    }
+
+    // Actualizează evidențierea indiferent de acțiune
+    try {
+      colorRowsTrigger(sheetName);
+    } catch (inner) {
+      console.error("Eroare colorRowsTrigger:", inner);
+    }
+
+  } catch (err) {
+    console.error("❌ Eroare onEdit:", err);
+    Logger.log("❌ Eroare onEdit: " + err);
+  }
+}
+
+
+
+    `;
+
+    const copyBtn = document.getElementById('copyBtn');
+    const codeBlock = document.getElementById('codeBlock');
+
+    // Injectăm codul fără caractere escapate
+    codeBlock.textContent = exampleCode.trim();
+    hljs.highlightAll();
+
+    copyBtn.addEventListener('click', () => {
+      const text = codeBlock.innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.innerHTML = '<i class="fas fa-check"></i> Copied!';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+        }, 2000);
+      });
+    });
+  </script>
+</body>
+</html>
