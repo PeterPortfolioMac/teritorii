@@ -1,3 +1,4 @@
+
 <!doctype html>
 <html lang="ro">
 <head>
@@ -172,6 +173,9 @@ button.secondary{background:#6b7280}
         <h3 style="margin:0;font-size:14px">Generare cod QR</h3>
         <label>Introduceți un URL</label>
         <input id="qrUrl" type="text" placeholder="https://..." />
+		<label>Dimensiune QR (px)</label>
+<input id="qrSize" type="number" value="200" min="50" max="1000" />
+
         <button id="generateQrBtn">Generează cod QR pe hartă</button>
         <small class="muted">QR-ul va apărea pe hartă, poate fi mutat, redimensionat sau șters.</small>
       </div>
@@ -515,11 +519,15 @@ map.on('click', function(e) {
     const url = document.getElementById('qrUrl').value.trim();
     if (!url) return alert('Introduceți un URL.');
 
+    const size = parseInt(document.getElementById('qrSize').value) || 200;
+
     const qrDiv = document.createElement('div');
     qrDiv.className = 'qr-box';
     qrDiv.style.zIndex = 5000;
     qrDiv.style.left = '40px';
     qrDiv.style.top = '40px';
+    qrDiv.style.width = size + 'px';
+    qrDiv.style.height = size + 'px';
 
     const del = document.createElement('button');
     del.className = 'qr-delete';
@@ -531,50 +539,51 @@ map.on('click', function(e) {
     qrInner.style.width = '100%';
     qrInner.style.height = '100%';
     qrDiv.appendChild(qrInner);
-    new QRCode(qrInner, { text: url, width: 200, height: 200 });
+
+    new QRCode(qrInner, { text: url, width: size, height: size });
 
     workspaceEl.appendChild(qrDiv);
 
-    // InteractJS - drag & resize
+    // interactJS rămâne neschimbat
     interact(qrDiv).draggable({
-      modifiers: [interact.modifiers.restrictRect({ restriction: workspaceEl, endOnly: true })],
-      listeners: {
-        move(event) {
-          const t = event.target;
-          const x = (parseFloat(t.getAttribute('data-x')) || 0) + event.dx;
-          const y = (parseFloat(t.getAttribute('data-y')) || 0) + event.dy;
-          t.style.transform = `translate(${x}px, ${y}px)`;
-          t.setAttribute('data-x', x);
-          t.setAttribute('data-y', y);
+        modifiers: [interact.modifiers.restrictRect({ restriction: workspaceEl, endOnly: true })],
+        listeners: {
+            move(event) {
+                const t = event.target;
+                const x = (parseFloat(t.getAttribute('data-x')) || 0) + event.dx;
+                const y = (parseFloat(t.getAttribute('data-y')) || 0) + event.dy;
+                t.style.transform = `translate(${x}px, ${y}px)`;
+                t.setAttribute('data-x', x);
+                t.setAttribute('data-y', y);
+            }
         }
-      }
     }).resizable({
-      edges: { left:true, right:true, bottom:true, top:true },
-      modifiers: [
-        interact.modifiers.restrictEdges({ outer: workspaceEl }),
-        interact.modifiers.restrictSize({ min:{ width:60, height:60 }, max:{ width:workspaceEl.clientWidth, height:workspaceEl.clientHeight } })
-      ],
-      listeners: {
-        move(event) {
-          const t = event.target;
-          let x = parseFloat(t.getAttribute('data-x')) || 0;
-          let y = parseFloat(t.getAttribute('data-y')) || 0;
-          t.style.width = event.rect.width + 'px';
-          t.style.height = event.rect.height + 'px';
-          x += event.deltaRect.left;
-          y += event.deltaRect.top;
-          t.style.transform = `translate(${x}px, ${y}px)`;
-          t.setAttribute('data-x', x);
-          t.setAttribute('data-y', y);
+        edges: { left:true, right:true, bottom:true, top:true },
+        modifiers: [
+            interact.modifiers.restrictEdges({ outer: workspaceEl }),
+            interact.modifiers.restrictSize({ min:{ width:60, height:60 }})
+        ],
+        listeners: {
+            move(event) {
+                const t = event.target;
+                let x = parseFloat(t.getAttribute('data-x')) || 0;
+                let y = parseFloat(t.getAttribute('data-y')) || 0;
+                t.style.width = event.rect.width + 'px';
+                t.style.height = event.rect.height + 'px';
+                x += event.deltaRect.left;
+                y += event.deltaRect.top;
+                t.style.transform = `translate(${x}px, ${y}px)`;
+                t.setAttribute('data-x', x);
+                t.setAttribute('data-y', y);
 
-          // redesenează QR clar la noua dimensiune
-          const inner = t.querySelector('div');
-          inner.innerHTML = '';
-          new QRCode(inner, { text: url, width: event.rect.width, height: event.rect.height });
+                const inner = t.querySelector('div');
+                inner.innerHTML = '';
+                new QRCode(inner, { text: url, width: event.rect.width, height: event.rect.height });
+            }
         }
-      }
     });
-  });
+});
+
 })();
 </script>
 </body>
