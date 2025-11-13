@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="ro">
 <head>
@@ -244,7 +243,7 @@ button.secondary{background:#6b7280}
 
   layers.esri.addTo(map);
   const drawnItems=new L.FeatureGroup();map.addLayer(drawnItems);
-  const drawControl=new L.Control.Draw({draw:{polyline:false,rectangle:false,circle:false,marker:false,circlemarker:false,polygon:{allowIntersection:false,showArea:true}},edit:{featureGroup:drawnItems,remove:true}});
+  const drawControl=new L.Control.Draw({draw:{polyline:true,rectangle:true,circle:true,marker:true,circlemarker:false,polygon:{allowIntersection:false,showArea:true}},edit:{featureGroup:drawnItems,remove:true}});
   map.addControl(drawControl);
   const polyColorInput=document.getElementById('polyColor');
   map.on(L.Draw.Event.CREATED,e=>{
@@ -416,7 +415,6 @@ button.secondary{background:#6b7280}
 
   return blob;
 }
-
 
 
 
