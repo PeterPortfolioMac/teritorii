@@ -337,57 +337,8 @@
 })();
 </script>
 
-<!-- ⭐⭐⭐ PLUGIN STATISTICI — ROBUST, FĂRĂ DUPLICARE ⭐⭐⭐ -->
-<div id="stats-plugin">
-  <div class="stat"><strong>Total vizite:</strong> <span id="total-visits">0</span></div>
-  <div class="stat"><strong>Vizitatori unici:</strong> <span id="unique-visitors">0</span></div>
-  <div class="stat"><strong>Online acum:</strong> <span id="online-users">0</span></div>
-</div>
 
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-
-  /* ▶ TOTAL VISITS */
-  let totalVisits = Number(localStorage.getItem('totalVisits') || 0) + 1;
-  localStorage.setItem('totalVisits', totalVisits);
-  document.getElementById('total-visits').textContent = totalVisits;
-
-  /* ▶ UNIQUE VISITORS — ROBUST, CU UUID */
-  if (!localStorage.getItem('visitor-id')) {
-    localStorage.setItem('visitor-id', crypto.randomUUID());
-
-    let unique = Number(localStorage.getItem('uniqueVisitors') || 0);
-    unique++;
-    localStorage.setItem('uniqueVisitors', unique);
-  }
-
-  document.getElementById('unique-visitors').textContent =
-    localStorage.getItem('uniqueVisitors') || 1;
-
-  /* ▶ ONLINE VISITORS — LOCAL SIMULATOR */
-  const ONLINE_KEY = "onlineUsers";
-  const sessionID = crypto.randomUUID();
-
-  function updateOnlineUsers() {
-    let list = JSON.parse(localStorage.getItem(ONLINE_KEY) || "[]");
-    const now = Date.now();
-
-    list = list.filter(u => now - u.time < 5000);
-
-    const existing = list.find(u => u.id === sessionID);
-    if (existing) existing.time = now;
-    else list.push({ id: sessionID, time: now });
-
-    localStorage.setItem(ONLINE_KEY, JSON.stringify(list));
-
-    document.getElementById("online-users").textContent = list.length;
-  }
-
-  setInterval(updateOnlineUsers, 2000);
-  updateOnlineUsers();
-
-});
-</script>
 
 </body>
 </html>
+
