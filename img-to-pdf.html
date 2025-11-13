@@ -325,7 +325,18 @@ if (field2 && text2Val) {
 
         await renderPdfPreview(generatedPdfBlobUrl, pageIndex, target);
         downloadBtn.disabled = false;
-        downloadBtn.onclick = ()=>{ const a=document.createElement('a'); a.href=generatedPdfBlobUrl; a.download='fisa_completata.pdf'; a.click(); };
+        downloadBtn.onclick = ()=>{ 
+  const loc = document.getElementById('text1').value || 'Localitate';
+  const ter = document.getElementById('text2').value || 'XX';
+
+  const fileName = `S-12 - ${loc}, Nr. ${ter}.pdf`;
+
+  const a = document.createElement('a');
+  a.href = generatedPdfBlobUrl;
+  a.download = fileName;
+  a.click();
+};
+
         setStatus('PDF generat — poți descărca sau previzualiza.');
       }catch(err){ console.error(err); setStatus('Eroare la generare.'); alert('Eroare: '+(err.message||err)); }
     });
@@ -382,3 +393,4 @@ if (field2 && text2Val) {
 
 </body>
 </html>
+
