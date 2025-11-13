@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>S-12-M — 4 formulare pe un A4 landscape</title>
+
   <style>
     :root{
       --bg:#f4f6fa; --card:#ffffff; --accent:#2563eb; --muted:#6b7280;
@@ -41,7 +42,6 @@
     .infoRow{display:flex;justify-content:space-between;align-items:center}
     footer{font-size:12px;color:var(--muted);margin-top:12px}
 
-    /* Drag & Drop */
     #dropzone{
       border:2px dashed var(--accent);
       background:#f0f5ff;
@@ -60,16 +60,33 @@
       .panel{order:2}
       .preview{order:1}
     }
+
+    /* Plugin Stats */
+    #stats-plugin {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0,0,0,0.85);
+      color: #fff;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      display: flex;
+      justify-content: space-around;
+      z-index: 9999;
+    }
+    .stat { margin: 0 10px; }
   </style>
 </head>
+
 <body>
 
   <div class="app" role="main">
     <div class="panel" aria-label="Control panel">
-      
+
       <h1>Combină 4 fișe <span style="color:var(--accent)">S-12</span> pe un A4 landscape</h1>
 
-      <!-- DRAG & DROP -->
       <div id="dropzone">
         Trage aici 1–4 fișiere PDF<br>
         sau apasă pentru a selecta.
@@ -139,9 +156,7 @@
 
   function setStatus(msg){ statusEl.textContent = msg; }
 
-  /* ────────────────────────────────
-     DRAG & DROP LOGIC
-  ──────────────────────────────── */
+  /* DRAG & DROP HANDLERS */
 
   ['dragenter','dragover','dragleave','drop'].forEach(ev=>{
     dropzone.addEventListener(ev, e=>{
@@ -173,10 +188,8 @@
 
     if(files.length>4) files=files.slice(0,4);
 
-    // Golim sloturile
     for(let i=0;i<4;i++) pdfInputs[i].value="";
 
-    // Încărcăm exact câte fișiere au fost trase
     for(let i=0;i<files.length;i++){
       const dt=new DataTransfer();
       dt.items.add(files[i]);
@@ -186,7 +199,6 @@
     setStatus(`Ai încărcat ${files.length} fișier(e).`);
   });
 
-  // click în dropzone = file select
   dropzone.addEventListener('click', ()=>{
     const hidden=document.createElement('input');
     hidden.type='file';
@@ -211,114 +223,107 @@
     hidden.click();
   });
 
-
-  /* ────────────────────────────────
-     PDF GENERATION LOGIC
-  ──────────────────────────────── */
+  /* PDF PROCESSING */
 
   generateBtn.addEventListener('click', async ()=>{
-  try{
-    const files = pdfInputs.map(i => i.files[0] || null);
+    try{
+      const files = pdfInputs.map(i => i.files[0] || null);
+      if(files.every(f => f === null)){
+        alert("Încarcă măcar un fișier PDF.");
+        return;
+      }
 
-    // trebuie doar măcar un fișier
-    if(files.every(f => f === null)){
-      alert("Încarcă măcar un fișier PDF.");
-      return;
-    }
+      setStatus("Generez PDF...");
+      previewInfo.textContent = "Se generează...";
 
-    setStatus("Generez PDF...");
-    previewInfo.textContent = "Se generează...";
+      const { PDFDocument, PageSizes, rgb } = PDFLib;
+      const outDoc = await PDFDocument.create();
 
-    const { PDFDocument, PageSizes, rgb } = PDFLib;
-    const outDoc = await PDFDocument.create();
+      const A4 = PageSizes.A4;
+      const pageWidth = A4[1];
+      const pageHeight = A4[0];
 
-    const A4 = PageSizes.A4;
-    const pageWidth = A4[1];
-    const pageHeight = A4[0];
+      const page = outDoc.addPage([pageWidth, pageHeight]);
 
-    const page = outDoc.addPage([pageWidth, pageHeight]);
+      const cellW = pageWidth / 2;
+      const cellH = pageHeight / 2;
 
-    const cellW = pageWidth / 2;
-    const cellH = pageHeight / 2;
+      const cells = [
+        {col:0,row:1},
+        {col:1,row:1},
+        {col:0,row:0},
+        {col:1,row:0}
+      ];
 
-    const cells = [
-      {col:0,row:1},
-      {col:1,row:1},
-      {col:0,row:0},
-      {col:1,row:0}
-    ];
+      for(let i=0;i<4;i++){
+        if(!files[i]) continue;
 
-    for(let i=0;i<4;i++){
-      if(!files[i]) continue;   // <-- aici permitem sloturi goale
+        const srcBytes = await files[i].arrayBuffer();
+        const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
 
-      const srcBytes = await files[i].arrayBuffer();
-      const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+        try{
+          const form = srcDoc.getForm();
+          form.flatten();
+        }catch(e){}
 
-      try{
-        const form = srcDoc.getForm();
-        form.flatten();
-      }catch(e){}
+        const flattened = await srcDoc.save();
+        const [embedded] = await outDoc.embedPdf(flattened, [0]);
 
-      const flattened = await srcDoc.save();
-      const [embedded] = await outDoc.embedPdf(flattened, [0]);
+        const srcW = embedded.width;
+        const srcH = embedded.height;
 
-      const srcW = embedded.width;
-      const srcH = embedded.height;
+        const c = cells[i];
+        const posX = c.col * cellW;
+        const posY = c.row * cellH;
 
-      const c = cells[i];
-      const posX = c.col * cellW;
-      const posY = c.row * cellH;
+        const scale = Math.min(cellW / srcW, cellH / srcH);
 
-      const scale = Math.min(cellW / srcW, cellH / srcH);
+        page.drawPage(embedded, {
+          x: posX + (cellW - srcW * scale)/2,
+          y: posY + (cellH - srcH * scale)/2,
+          width: srcW * scale,
+          height: srcH * scale
+        });
+      }
 
-      page.drawPage(embedded, {
-        x: posX + (cellW - srcW * scale)/2,
-        y: posY + (cellH - srcH * scale)/2,
-        width: srcW * scale,
-        height: srcH * scale
+      page.drawLine({
+        start:{x:pageWidth/2,y:18},
+        end:{x:pageWidth/2,y:pageHeight-18},
+        thickness:0.3,
+        color:rgb(0.3,0.3,0.3)
       });
+
+      page.drawLine({
+        start:{x:18,y:pageHeight/2},
+        end:{x:pageWidth-18,y:pageHeight/2},
+        thickness:0.3,
+        color:rgb(0.3,0.3,0.3)
+      });
+
+      const pdfBytes = await outDoc.save();
+
+      if(generatedPdfBlobUrl) URL.revokeObjectURL(generatedPdfBlobUrl);
+      const blob = new Blob([pdfBytes], { type:"application/pdf" });
+      generatedPdfBlobUrl = URL.createObjectURL(blob);
+
+      await renderPdfPreview(generatedPdfBlobUrl);
+
+      downloadBtn.disabled = false;
+      downloadBtn.onclick = ()=>{
+        const a=document.createElement('a');
+        a.href = generatedPdfBlobUrl;
+        a.download = "S-12-M_4-up.pdf";
+        a.click();
+      };
+
+      setStatus("Gata! Poți descărca PDF-ul.");
+      previewInfo.textContent = "PDF generat.";
+
+    }catch(err){
+      alert("Eroare: " + err.message);
+      setStatus("Eroare la generare.");
     }
-
-    // linii de tăiere
-    page.drawLine({
-      start:{x:pageWidth/2,y:18},
-      end:{x:pageWidth/2,y:pageHeight-18},
-      thickness:0.3,
-      color:rgb(0.3,0.3,0.3)
-    });
-
-    page.drawLine({
-      start:{x:18,y:pageHeight/2},
-      end:{x:pageWidth-18,y:pageHeight/2},
-      thickness:0.3,
-      color:rgb(0.3,0.3,0.3)
-    });
-
-    const pdfBytes = await outDoc.save();
-
-    if(generatedPdfBlobUrl) URL.revokeObjectURL(generatedPdfBlobUrl);
-    const blob = new Blob([pdfBytes], { type:"application/pdf" });
-    generatedPdfBlobUrl = URL.createObjectURL(blob);
-
-    await renderPdfPreview(generatedPdfBlobUrl);
-
-    downloadBtn.disabled = false;
-    downloadBtn.onclick = ()=>{
-      const a=document.createElement('a');
-      a.href = generatedPdfBlobUrl;
-      a.download = "S-12-M_4-up.pdf";
-      a.click();
-    };
-
-    setStatus("Gata! Poți descărca PDF-ul.");
-    previewInfo.textContent = "PDF generat.";
-
-  }catch(err){
-    alert("Eroare: " + err.message);
-    setStatus("Eroare la generare.");
-  }
-});
-
+  });
 
   async function renderPdfPreview(url){
     const pdf=await pdfjsLib.getDocument({url}).promise;
@@ -332,6 +337,57 @@
 })();
 </script>
 
+<!-- ⭐⭐⭐ PLUGIN STATISTICI — ROBUST, FĂRĂ DUPLICARE ⭐⭐⭐ -->
+<div id="stats-plugin">
+  <div class="stat"><strong>Total vizite:</strong> <span id="total-visits">0</span></div>
+  <div class="stat"><strong>Vizitatori unici:</strong> <span id="unique-visitors">0</span></div>
+  <div class="stat"><strong>Online acum:</strong> <span id="online-users">0</span></div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+  /* ▶ TOTAL VISITS */
+  let totalVisits = Number(localStorage.getItem('totalVisits') || 0) + 1;
+  localStorage.setItem('totalVisits', totalVisits);
+  document.getElementById('total-visits').textContent = totalVisits;
+
+  /* ▶ UNIQUE VISITORS — ROBUST, CU UUID */
+  if (!localStorage.getItem('visitor-id')) {
+    localStorage.setItem('visitor-id', crypto.randomUUID());
+
+    let unique = Number(localStorage.getItem('uniqueVisitors') || 0);
+    unique++;
+    localStorage.setItem('uniqueVisitors', unique);
+  }
+
+  document.getElementById('unique-visitors').textContent =
+    localStorage.getItem('uniqueVisitors') || 1;
+
+  /* ▶ ONLINE VISITORS — LOCAL SIMULATOR */
+  const ONLINE_KEY = "onlineUsers";
+  const sessionID = crypto.randomUUID();
+
+  function updateOnlineUsers() {
+    let list = JSON.parse(localStorage.getItem(ONLINE_KEY) || "[]");
+    const now = Date.now();
+
+    list = list.filter(u => now - u.time < 5000);
+
+    const existing = list.find(u => u.id === sessionID);
+    if (existing) existing.time = now;
+    else list.push({ id: sessionID, time: now });
+
+    localStorage.setItem(ONLINE_KEY, JSON.stringify(list));
+
+    document.getElementById("online-users").textContent = list.length;
+  }
+
+  setInterval(updateOnlineUsers, 2000);
+  updateOnlineUsers();
+
+});
+</script>
+
 </body>
 </html>
-
