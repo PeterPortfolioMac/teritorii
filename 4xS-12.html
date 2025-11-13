@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>S-12-M — 4 formulare pe un A4 landscape</title>
+  <style>
+    :root{
+      --bg:#f4f6fa; --card:#ffffff; --accent:#2563eb; --muted:#6b7280;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;font-family:Inter,system-ui,Arial,Helvetica,sans-serif;
+      background:var(--bg);color:#111;padding:20px;display:flex;justify-content:center;
+    }
+    .app{
+      width:100%;max-width:1100px;background:var(--card);border-radius:12px;
+      box-shadow:0 10px 30px rgba(2,6,23,0.08);
+      display:grid;grid-template-columns:360px 1fr;gap:18px;padding:18px;
+    }
+    .panel{padding:10px}
+    h1{font-size:16px;margin:4px 0 10px}
+    label{display:block;font-weight:600;margin-top:10px;color:var(--muted);font-size:13px}
+    input[type="file"]{
+      width:100%;padding:9px;border-radius:8px;border:1px solid #e6edf8;margin-top:6px;
+      font-size:14px;background:#fff;
+    }
+    button{
+      padding:10px 12px;border-radius:10px;border:0;background:var(--accent);
+      color:#fff;font-weight:700;cursor:pointer;margin-top:12px;
+    }
+    button:disabled{opacity:.55;cursor:not-allowed}
+    .muted{color:var(--muted);font-size:13px;margin-top:8px}
+    .preview{
+      padding:12px;border-radius:10px;background:#fbfdff;border:1px solid #eef6ff;
+      min-height:520px;display:flex;flex-direction:column;
+    }
+    #pdfCanvas{
+      width:100%;border-radius:8px;border:1px solid #e6f0ff;display:block;max-height:820px;
+    }
+    .infoRow{display:flex;justify-content:space-between;align-items:center}
+    footer{font-size:12px;color:var(--muted);margin-top:12px}
+
+    /* Drag & Drop */
+    #dropzone{
+      border:2px dashed var(--accent);
+      background:#f0f5ff;
+      padding:30px;
+      border-radius:12px;
+      text-align:center;
+      font-weight:600;
+      color:#2563eb;
+      margin-top:15px;
+      cursor:pointer;
+      transition:0.2s;
+    }
+
+    @media (max-width:960px){
+      .app{grid-template-columns:1fr;padding:12px}
+      .panel{order:2}
+      .preview{order:1}
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app" role="main">
+    <div class="panel" aria-label="Control panel">
+      
+      <h1>Combină 4 fișe <span style="color:var(--accent)">S-12-M</span> pe un A4 landscape</h1>
+
+      <!-- DRAG & DROP -->
+      <div id="dropzone">
+        Trage aici 1–4 fișiere PDF<br>
+        sau apasă pentru a selecta.
+      </div>
+
+      <label>PDF 1</label>
+      <input id="pdf1" type="file" accept="application/pdf">
+
+      <label>PDF 2</label>
+      <input id="pdf2" type="file" accept="application/pdf">
+
+      <label>PDF 3</label>
+      <input id="pdf3" type="file" accept="application/pdf">
+
+      <label>PDF 4</label>
+      <input id="pdf4" type="file" accept="application/pdf">
+
+      <button id="generateBtn">Generează PDF 4-up</button>
+      <button id="downloadBtn" disabled>Descarcă PDF 4-up</button>
+
+      <div class="muted" id="status">Încarcă 1–4 fișiere PDF.</div>
+
+      <footer>
+        Fișierul exportat este A4 landscape, cu 4 pagini scalate și text păstrat din câmpuri.
+      </footer>
+    </div>
+
+    <div class="preview" aria-label="Preview area">
+      <div class="infoRow">
+        <strong>Previzualizare PDF</strong>
+        <div class="muted" id="previewInfo">Niciun PDF generat încă.</div>
+      </div>
+      <div style="position:relative;flex:1;margin-top:8px">
+        <canvas id="pdfCanvas"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- PDF-LIB -->
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+
+<script>
+(function(){
+
+  const pdfInputs = [
+    document.getElementById('pdf1'),
+    document.getElementById('pdf2'),
+    document.getElementById('pdf3'),
+    document.getElementById('pdf4')
+  ];
+
+  const dropzone = document.getElementById('dropzone');
+  const generateBtn = document.getElementById('generateBtn');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const statusEl = document.getElementById('status');
+  const previewInfo = document.getElementById('previewInfo');
+  const canvas = document.getElementById('pdfCanvas');
+
+  let generatedPdfBlobUrl = null;
+
+  function setStatus(msg){ statusEl.textContent = msg; }
+
+  /* ────────────────────────────────
+     DRAG & DROP LOGIC
+  ──────────────────────────────── */
+
+  ['dragenter','dragover','dragleave','drop'].forEach(ev=>{
+    dropzone.addEventListener(ev, e=>{
+      e.preventDefault();
+      e.stopPropagation();
+    });
+  });
+
+  dropzone.addEventListener('dragover', ()=>{
+    dropzone.style.background='#e8f0ff';
+    dropzone.style.borderColor='#1d4ed8';
+  });
+
+  dropzone.addEventListener('dragleave', ()=>{
+    dropzone.style.background='#f0f5ff';
+    dropzone.style.borderColor='var(--accent)';
+  });
+
+  dropzone.addEventListener('drop', e=>{
+    dropzone.style.background='#f0f5ff';
+    dropzone.style.borderColor='var(--accent)';
+
+    let files=[...e.dataTransfer.files].filter(f=>f.type==="application/pdf");
+
+    if(files.length===0){
+      alert("Te rog trage doar fișiere PDF.");
+      return;
+    }
+
+    if(files.length>4) files=files.slice(0,4);
+
+    // Golim sloturile
+    for(let i=0;i<4;i++) pdfInputs[i].value="";
+
+    // Încărcăm exact câte fișiere au fost trase
+    for(let i=0;i<files.length;i++){
+      const dt=new DataTransfer();
+      dt.items.add(files[i]);
+      pdfInputs[i].files=dt.files;
+    }
+
+    setStatus(`Ai încărcat ${files.length} fișier(e).`);
+  });
+
+  // click în dropzone = file select
+  dropzone.addEventListener('click', ()=>{
+    const hidden=document.createElement('input');
+    hidden.type='file';
+    hidden.accept='application/pdf';
+    hidden.multiple=true;
+
+    hidden.onchange=()=>{
+      let files=[...hidden.files];
+      if(files.length>4) files=files.slice(0,4);
+
+      for(let i=0;i<4;i++) pdfInputs[i].value="";
+
+      for(let i=0;i<files.length;i++){
+        const dt=new DataTransfer();
+        dt.items.add(files[i]);
+        pdfInputs[i].files=dt.files;
+      }
+
+      setStatus(`Ai selectat ${files.length} fișier(e).`);
+    };
+
+    hidden.click();
+  });
+
+
+  /* ────────────────────────────────
+     PDF GENERATION LOGIC
+  ──────────────────────────────── */
+
+  generateBtn.addEventListener('click', async ()=>{
+  try{
+    const files = pdfInputs.map(i => i.files[0] || null);
+
+    // trebuie doar măcar un fișier
+    if(files.every(f => f === null)){
+      alert("Încarcă măcar un fișier PDF.");
+      return;
+    }
+
+    setStatus("Generez PDF...");
+    previewInfo.textContent = "Se generează...";
+
+    const { PDFDocument, PageSizes, rgb } = PDFLib;
+    const outDoc = await PDFDocument.create();
+
+    const A4 = PageSizes.A4;
+    const pageWidth = A4[1];
+    const pageHeight = A4[0];
+
+    const page = outDoc.addPage([pageWidth, pageHeight]);
+
+    const cellW = pageWidth / 2;
+    const cellH = pageHeight / 2;
+
+    const cells = [
+      {col:0,row:1},
+      {col:1,row:1},
+      {col:0,row:0},
+      {col:1,row:0}
+    ];
+
+    for(let i=0;i<4;i++){
+      if(!files[i]) continue;   // <-- aici permitem sloturi goale
+
+      const srcBytes = await files[i].arrayBuffer();
+      const srcDoc = await PDFDocument.load(srcBytes, { ignoreEncryption: true });
+
+      try{
+        const form = srcDoc.getForm();
+        form.flatten();
+      }catch(e){}
+
+      const flattened = await srcDoc.save();
+      const [embedded] = await outDoc.embedPdf(flattened, [0]);
+
+      const srcW = embedded.width;
+      const srcH = embedded.height;
+
+      const c = cells[i];
+      const posX = c.col * cellW;
+      const posY = c.row * cellH;
+
+      const scale = Math.min(cellW / srcW, cellH / srcH);
+
+      page.drawPage(embedded, {
+        x: posX + (cellW - srcW * scale)/2,
+        y: posY + (cellH - srcH * scale)/2,
+        width: srcW * scale,
+        height: srcH * scale
+      });
+    }
+
+    // linii de tăiere
+    page.drawLine({
+      start:{x:pageWidth/2,y:18},
+      end:{x:pageWidth/2,y:pageHeight-18},
+      thickness:0.3,
+      color:rgb(0.3,0.3,0.3)
+    });
+
+    page.drawLine({
+      start:{x:18,y:pageHeight/2},
+      end:{x:pageWidth-18,y:pageHeight/2},
+      thickness:0.3,
+      color:rgb(0.3,0.3,0.3)
+    });
+
+    const pdfBytes = await outDoc.save();
+
+    if(generatedPdfBlobUrl) URL.revokeObjectURL(generatedPdfBlobUrl);
+    const blob = new Blob([pdfBytes], { type:"application/pdf" });
+    generatedPdfBlobUrl = URL.createObjectURL(blob);
+
+    await renderPdfPreview(generatedPdfBlobUrl);
+
+    downloadBtn.disabled = false;
+    downloadBtn.onclick = ()=>{
+      const a=document.createElement('a');
+      a.href = generatedPdfBlobUrl;
+      a.download = "S-12-M_4-up.pdf";
+      a.click();
+    };
+
+    setStatus("Gata! Poți descărca PDF-ul.");
+    previewInfo.textContent = "PDF generat.";
+
+  }catch(err){
+    alert("Eroare: " + err.message);
+    setStatus("Eroare la generare.");
+  }
+});
+
+
+  async function renderPdfPreview(url){
+    const pdf=await pdfjsLib.getDocument({url}).promise;
+    const page=await pdf.getPage(1);
+    const viewport=page.getViewport({scale:0.7});
+    canvas.width=viewport.width;
+    canvas.height=viewport.height;
+    await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+  }
+
+})();
+</script>
+
+</body>
+</html>
