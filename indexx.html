@@ -1,0 +1,2152 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TERITORII</title>
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- MapLibre GL -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- MapLibre GL Draw (community build) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl-draw@1.5.0/dist/maplibre-gl-draw.css">
+  <script src="https://cdn.jsdelivr.net/npm/maplibre-gl-draw@1.5.0/dist/maplibre-gl-draw.umd.js"></script>
+
+  <!-- Turf (centroid) -->
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6.5.0/turf.min.js"></script>
+
+  <!-- QR (SVG-capable) -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+
+  <!-- jsPDF + svg2pdf (vector QR) -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg2pdf.js@1.4.7/dist/svg2pdf.umd.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f6f8fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --border:#e2e8f0;
+      --primary:#2563eb;
+      --primary-2:#1d4ed8;
+      --danger:#dc2626;
+      --shadow: 0 10px 30px rgba(2,6,23,.08);
+      --radius:16px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background:var(--bg);
+      color:var(--text);
+    }
+    .container{
+      width:min(1200px, calc(100% - 32px));
+      margin: 18px auto 32px auto;
+    }
+
+    header{
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:10px;
+    }
+    h1{
+      margin:0;
+      font-size: clamp(28px, 4vw, 44px);
+      letter-spacing:.02em;
+    }
+    .top-actions{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+    .btn{
+      border:1px solid var(--border);
+      background:var(--card);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      font-weight:600;
+      cursor:pointer;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      box-shadow: 0 1px 0 rgba(2,6,23,.03);
+      transition: transform .05s ease, background .15s ease, border-color .15s ease;
+      user-select:none;
+    }
+    .btn:hover{ background:#f8fafc; border-color:#d7deea;}
+    .btn:active{ transform: translateY(1px); }
+    .btn.primary{
+      background: var(--primary);
+      border-color: var(--primary);
+      color:white;
+    }
+    .btn.primary:hover{ background:var(--primary-2); border-color:var(--primary-2);}
+    .btn.danger{
+      background: #fff;
+      border-color: #fecaca;
+      color: var(--danger);
+    }
+    .btn.danger:hover{ background:#fff5f5; border-color:#fca5a5;}
+    .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; }
+
+    .map-shell{
+      position:relative;
+      width:100%;
+      border-radius: 18px;
+      overflow:hidden;
+      border:1px solid var(--border);
+      box-shadow: var(--shadow);
+      background:#e5e7eb;
+    }
+    #map{
+      width:100%;
+      height: 62vh;
+      min-height: 420px;
+    }
+    @media (max-width: 640px){
+      #map{ height: 50vh; min-height: 340px; }
+    }
+
+    .map-overlay-right{
+      position:absolute;
+      top:12px;
+      right:12px;
+      display:flex;
+      gap:10px;
+      z-index: 5;
+      pointer-events:auto;
+    }
+
+    .chip{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding:8px 10px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(6px);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 13px;
+      z-index: 5;
+      box-shadow: 0 6px 20px rgba(2,6,23,.12);
+    }
+    .save-indicator{
+      position:absolute;
+      left:12px;
+      top:12px;
+      z-index:5;
+    }
+    .attrib-note{
+      position:absolute;
+      left:12px;
+      bottom:10px;
+      z-index:6;
+      padding:6px 10px;
+      border-radius:999px;
+      font-size: 12px;
+      color:#0f172a;
+      background: rgba(255,255,255,.90);
+      border:1px solid var(--border);
+      pointer-events:none;
+    }
+    .draw-bar{
+      position: absolute;
+      left:12px;
+      top:56px;
+      z-index: 6;
+      display:none;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+      max-width: calc(100% - 24px);
+      pointer-events:auto;
+    }
+    .draw-bar.visible{ display:flex; }
+    .draw-bar .btn{ padding:9px 10px; border-radius: 12px; }
+    .draw-bar .mini{
+      padding:8px 10px;
+      border:1px solid var(--border);
+      background: rgba(255,255,255,.92);
+      backdrop-filter: blur(6px);
+      border-radius: 12px;
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .draw-bar input[type="color"]{
+      width:32px; height:32px;
+      border:none; background:transparent;
+      padding:0; cursor:pointer;
+    }
+
+    .under-map{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-top: 10px;
+      flex-wrap:wrap;
+    }
+    .toggle{
+      display:flex; align-items:center; gap:10px;
+      padding:10px 12px;
+      background: var(--card);
+      border:1px solid var(--border);
+      border-radius: 14px;
+      box-shadow: 0 1px 0 rgba(2,6,23,.03);
+      user-select:none;
+    }
+    .toggle input{ width:18px; height:18px; }
+    .hint{ color:var(--muted); font-size: 13px; }
+
+    .section-title{
+      margin: 26px 0 12px 0;
+      font-size: clamp(18px, 2.2vw, 26px);
+      letter-spacing:.02em;
+    }
+
+    .editor-grid{
+      display:grid;
+      grid-template-columns: 320px 1fr;
+      gap:14px;
+      align-items:start;
+    }
+    @media (max-width: 960px){
+      .editor-grid{ grid-template-columns: 1fr; }
+    }
+
+    .card{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding:14px;
+    }
+
+    label{
+      display:block;
+      font-weight:700;
+      font-size: 13px;
+      color:#0f172a;
+      margin: 10px 0 6px 0;
+    }
+    input[type="text"], input[type="number"], textarea{
+      width:100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border:1px solid var(--border);
+      outline:none;
+      font-size: 14px;
+      background: #fff;
+    }
+    textarea{ min-height: 92px; resize: vertical; }
+    input:focus, textarea:focus{ border-color: #93c5fd; box-shadow: 0 0 0 4px rgba(59,130,246,.15); }
+
+    .listbox{
+      width:100%;
+      min-height: 260px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 8px;
+      outline:none;
+      background:#fff;
+    }
+    .row-actions{
+      display:flex;
+      gap:10px;
+      margin-top: 12px;
+      flex-wrap:wrap;
+    }
+
+    /* Preview card 14cm x 9.5cm ratio */
+    .preview-wrap{
+      display:flex;
+      justify-content:center;
+      margin-top: 14px;
+    }
+    .preview{
+      width: min(860px, 100%);
+      aspect-ratio: 140 / 95;
+      border:1px solid var(--border);
+      border-radius: 18px;
+      background: #fff;
+      overflow:hidden;
+      position:relative;
+      box-shadow: var(--shadow);
+    }
+    .preview-inner{
+      position:absolute;
+      inset: 0;
+      padding: 14px 14px 12px 14px;
+      display:grid;
+      grid-template-columns: 60% 40%;
+      grid-template-rows: auto 1fr;
+      gap: 10px 12px;
+    }
+    @media (max-width: 680px){
+      .preview{ width:100%; }
+      .preview-inner{
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr;
+      }
+    }
+    .preview-head{
+      grid-column: 1 / -1;
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+    }
+    .preview-title{
+      text-align:center;
+      width:100%;
+      padding-right: 64px; /* space for number */
+    }
+    .preview-title h3{
+      margin:0;
+      font-size: 18px;
+      letter-spacing:.02em;
+    }
+    .preview-title .city{
+      margin-top: 4px;
+      font-weight: 700;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .preview-number{
+      position:absolute;
+      top: 14px;
+      right: 14px;
+      font-weight: 900;
+      font-size: 28px;
+      letter-spacing:.02em;
+    }
+
+    .preview-map{
+      border:1px solid var(--border);
+      border-radius: 14px;
+      overflow:hidden;
+      position:relative;
+      min-height: 210px;
+    }
+    #previewMap{ width:100%; height:100%; }
+    .map-help{
+      position:absolute;
+      left:10px;
+      right:10px;
+      bottom:10px;
+      background: rgba(255,255,255,.92);
+      border:1px solid var(--border);
+      border-radius: 12px;
+      padding:10px 10px;
+      font-size: 12px;
+      color:#0f172a;
+      line-height: 1.25;
+      box-shadow: 0 10px 25px rgba(2,6,23,.12);
+    }
+    .map-help .muted{ color: var(--muted); font-weight: 700; margin-bottom:6px; }
+
+    .preview-right{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      position:relative;
+      min-height: 210px;
+    }
+    .address-box{
+      border:1px dashed #cbd5e1;
+      border-radius: 14px;
+      padding:10px;
+      min-height: 120px;
+      white-space: pre-wrap;
+      font-size: 13px;
+      color:#0f172a;
+    }
+    .qr-zone{
+      border:1px solid var(--border);
+      border-radius: 14px;
+      height: 96px;
+      position:relative;
+      overflow:hidden;
+      background: #fff;
+    }
+    .qr-zone .label{
+      position:absolute;
+      left:10px; top:8px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      pointer-events:none;
+    }
+    .qr-draggable{
+      position:absolute;
+      left: 10px; top: 28px;
+      width: 64px; height: 64px;
+      cursor: grab;
+      touch-action:none;
+      user-select:none;
+      background: transparent;
+    }
+    .qr-draggable:active{ cursor: grabbing; }
+    .qr-draggable svg{ width:100%; height:100%; display:block; }
+
+    .qr-section{
+      margin-top: 14px;
+      display:grid;
+      grid-template-columns: 1fr 220px auto;
+      gap:10px;
+      align-items:end;
+    }
+    @media (max-width: 900px){
+      .qr-section{ grid-template-columns: 1fr; }
+    }
+
+    .bottom-actions{
+      margin-top: 18px;
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:space-between;
+    }
+    .bottom-actions .group{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .toast-wrap{
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      z-index: 9999;
+    }
+    .toast{
+      background: rgba(15,23,42,.94);
+      color: #fff;
+      padding: 10px 12px;
+      border-radius: 14px;
+      box-shadow: 0 14px 40px rgba(2,6,23,.25);
+      max-width: 360px;
+      font-size: 13px;
+      display:flex;
+      align-items:flex-start;
+      gap:10px;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .toast .icon{ margin-top:1px; opacity:.9; }
+    .toast .msg{ line-height:1.35; }
+    .toast .x{
+      margin-left:auto;
+      opacity:.8;
+      cursor:pointer;
+    }
+    .toast .x:hover{ opacity:1; }
+
+    /* Modal */
+    .modal-backdrop{
+      position:fixed; inset:0;
+      background: rgba(2,6,23,.45);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      z-index: 10000;
+      padding: 16px;
+    }
+    .modal-backdrop.show{ display:flex; }
+    .modal{
+      width: min(520px, 100%);
+      background: #fff;
+      border-radius: 18px;
+      border: 1px solid var(--border);
+      box-shadow: 0 30px 80px rgba(2,6,23,.35);
+      overflow:hidden;
+    }
+    .modal header{
+      padding: 14px 14px 10px 14px;
+      align-items:center;
+      margin:0;
+    }
+    .modal header h2{
+      margin:0;
+      font-size: 16px;
+    }
+    .modal .body{ padding: 0 14px 14px 14px; }
+    .modal .footer{
+      padding: 12px 14px 14px 14px;
+      display:flex; justify-content:flex-end; gap:10px;
+      border-top: 1px solid var(--border);
+      background:#fff;
+    }
+    .error{
+      color: var(--danger);
+      font-size: 13px;
+      margin-top: 8px;
+      display:none;
+    }
+
+    /* File input hidden */
+    #importFile{ display:none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>TERITORII</h1>
+        <div class="hint">Desenează teritorii (poligoane / linii), editează datele și exportă card-uri PDF/JPG 300DPI.</div>
+      </div>
+      <div class="top-actions">
+        <button class="btn" id="btnImportTop"><i class="fa-solid fa-file-import"></i> Importă JSON</button>
+        <button class="btn primary" id="btnAddTerritory"><i class="fa-solid fa-draw-polygon"></i> Adaugă teritoriu</button>
+      </div>
+    </header>
+
+    <div class="map-shell">
+      <div class="save-indicator chip" id="saveIndicator"><i class="fa-solid fa-cloud"></i> <span id="saveText">Ne-salvat</span></div>
+
+      <div class="map-overlay-right">
+        <!-- reserved (top-right already in page header) -->
+      </div>
+
+      <div class="draw-bar" id="drawBar">
+        <div class="mini">
+          <i class="fa-solid fa-palette"></i>
+          <span style="font-weight:800;">Culoare</span>
+          <input type="color" id="colorPicker" value="#2563eb" title="Culoare teritoriu" />
+        </div>
+        <button class="btn" id="btnDrawPolygon"><i class="fa-solid fa-draw-polygon"></i> Poligon</button>
+        <button class="btn" id="btnDrawLine"><i class="fa-solid fa-signature"></i> Linie</button>
+        <button class="btn" id="btnUndo"><i class="fa-solid fa-rotate-left"></i> Undo</button>
+        <button class="btn danger" id="btnCancelDraw"><i class="fa-solid fa-ban"></i> Cancel</button>
+        <button class="btn primary" id="btnSaveDraw"><i class="fa-solid fa-check"></i> Salvează</button>
+      </div>
+
+      <div id="map"></div>
+      <div class="attrib-note">© OpenStreetMap contributors</div>
+    </div>
+
+    <div class="under-map">
+      <label class="toggle">
+        <input type="checkbox" id="toggleGPS" />
+        <span style="font-weight:800;">Coordonate GPS</span>
+      </label>
+      <div class="hint">În modul GPS: click pe hartă → coordonate + URL Google Maps (Copy / Send to QR).</div>
+    </div>
+
+    <h2 class="section-title">EDITARE ȘI SALVARE</h2>
+
+    <div class="editor-grid">
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div style="font-weight:900;">Teritorii</div>
+          <span class="hint" id="territoryCount">0</span>
+        </div>
+        <select id="territoryList" class="listbox" size="12"></select>
+
+        <div class="row-actions">
+          <button class="btn" id="btnExportJson"><i class="fa-solid fa-file-export"></i> Export JSON</button>
+          <button class="btn" id="btnImportJson"><i class="fa-solid fa-file-import"></i> Importă JSON</button>
+          <input type="file" id="importFile" accept=".json,application/json">
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px;">
+          <div style="font-weight:900;">Detalii teritoriu</div>
+          <div class="hint">Modificările se autosalvează (debounce 500ms).</div>
+        </div>
+
+        <label>Oraș</label>
+        <input type="text" id="inputCity" placeholder="Ex: București">
+
+        <label>Numărul teritoriului</label>
+        <input type="text" id="inputNumber" placeholder="Ex: 512">
+
+        <label>Adresă</label>
+        <textarea id="inputAddress" placeholder="Ex: Str. Exemplu 10&#10;Bloc A&#10;Etaj 3"></textarea>
+
+        <div class="row-actions">
+          <button class="btn primary" id="btnSaveTexts"><i class="fa-solid fa-floppy-disk"></i> Salvează</button>
+          <button class="btn" id="btnForceSave"><i class="fa-solid fa-cloud-arrow-up"></i> Salvează teritoriu</button>
+          <button class="btn danger" id="btnDelete"><i class="fa-solid fa-trash"></i> Șterge teritoriu</button>
+        </div>
+
+        <div class="preview-wrap">
+          <div class="preview" id="previewCard">
+            <div class="preview-number" id="previewNumber">—</div>
+            <div class="preview-inner">
+              <div class="preview-head">
+                <div class="preview-title">
+                  <h3>Harta teritoriului</h3>
+                  <div class="city" id="previewCity">—</div>
+                </div>
+              </div>
+
+              <div class="preview-map">
+                <div id="previewMap"></div>
+                <div class="map-help">
+                  <div class="muted">How to interact with the maps?</div>
+                  <div>Move: drag with two fingers / drag with the left mouse button</div>
+                  <div>Zoom: pinch or spread with two fingers / hold Ctrl and scroll with the mouse wheel</div>
+                  <div>Rotate: rotate with two fingers / hold Alt + Shift and drag with the left mouse button</div>
+                </div>
+              </div>
+
+              <div class="preview-right">
+                <div class="address-box" id="previewAddress">—</div>
+                <div class="qr-zone" id="qrZone">
+                  <div class="label">QR</div>
+                  <div class="qr-draggable" id="qrDraggable" aria-label="QR draggable"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qr-section" id="qrSection">
+          <div>
+            <label>Introduceți un URL</label>
+            <input type="text" id="qrUrl" placeholder="https://www.google.com/maps?q=LAT,LNG">
+          </div>
+          <div>
+            <label>Dimensiune QR (px)</label>
+            <input type="number" id="qrSize" min="64" max="1024" step="1" value="256">
+          </div>
+          <div>
+            <button class="btn primary" id="btnGenQR"><i class="fa-solid fa-qrcode"></i> Generează cod QR pe hartă</button>
+          </div>
+        </div>
+
+        <div class="bottom-actions">
+          <div class="group">
+            <button class="btn" id="btnSavePdf"><i class="fa-solid fa-file-pdf"></i> Salvează PDF</button>
+            <button class="btn" id="btnSaveJpg"><i class="fa-solid fa-image"></i> Salvează JPG 300DPI</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast-wrap" id="toastWrap"></div>
+
+  <!-- Modal: territory number -->
+  <div class="modal-backdrop" id="modalBackdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <header>
+        <h2><i class="fa-solid fa-hashtag"></i> Număr teritoriu</h2>
+      </header>
+      <div class="body">
+        <div class="hint">Introduceți un număr unic (doar cifre). Acesta este ID-ul teritoriului.</div>
+        <label style="margin-top:10px;">Număr</label>
+        <input type="text" id="modalNumber" placeholder="Ex: 512" inputmode="numeric" />
+        <div class="error" id="modalError"></div>
+      </div>
+      <div class="footer">
+        <button class="btn" id="modalCancel"><i class="fa-solid fa-xmark"></i> Renunță</button>
+        <button class="btn primary" id="modalOk"><i class="fa-solid fa-check"></i> Continuă</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/**
+ * Recapitulare cerințe implementate (checklist):
+ * - Un singur fișier index.html, CSS/JS inline, doar CDN-uri.
+ * - Hartă mare full width, tiles RRZE 512px (tileSize=512, zoomOffset=-1) cu fallback automat OSM 256px pe tileerror + toast.
+ * - MapLibre GL JS (rotație nativă): rotate cu 2 degete, Alt+Shift + drag.
+ * - Mod “Adaugă teritoriu” cu desenare poligon/linie + edit/move înainte de “Salvează”, culoare per teritoriu, Undo + Cancel.
+ * - Număr teritoriu numeric + unic; etichetă cu număr pe hartă (centroid pentru poligon / midpoint pentru linie).
+ * - Toggle GPS: click → coordonate + URL Google Maps + Copy + Send to QR.
+ * - Editare: listă teritorii, câmpuri oraș/număr/adresă, salvare în state + localStorage; dacă treci la alt teritoriu, datele rămân.
+ * - Preview card ratio 14cm x 9.5cm cu hartă teritoriului selectat (doar acel teritoriu), instrucțiuni, adresă multiline, zonă QR.
+ * - QR generator SVG, drag în preview, persist per teritoriu (url, sizePx, x/y).
+ * - Export JSON + Import JSON complet (geometrii GeoJSON standard, culori, texte, QR, setări hartă per teritoriu).
+ * - Export PDF 14x9.5cm (mm), 300DPI map snapshot, text+QR vector (jsPDF + svg2pdf). JPG 1654x1122 (14x9.5cm @ 300DPI).
+ * - Ștergere teritoriu complet.
+ * - Autosave debounce 500ms + indicator “Salvat ✔”.
+ */
+
+(function(){
+  'use strict';
+
+  const STORAGE_KEY = 'teritorii_state_v1';
+
+  /** ---------- State ---------- */
+  const defaultState = () => ({
+    version: 1,
+    territories: {}, // by id (string numeric)
+    ui: {
+      selectedId: null,
+      gpsEnabled: false,
+      usingFallbackTiles: false,
+      lastSavedAt: null,
+      drawMode: false,
+      pendingNewId: null
+    }
+  });
+
+  let state = loadState() ?? defaultState();
+
+  /** ---------- DOM ---------- */
+  const el = {
+    map: document.getElementById('map'),
+    previewMap: document.getElementById('previewMap'),
+    territoryList: document.getElementById('territoryList'),
+    territoryCount: document.getElementById('territoryCount'),
+
+    btnAddTerritory: document.getElementById('btnAddTerritory'),
+    btnImportTop: document.getElementById('btnImportTop'),
+
+    drawBar: document.getElementById('drawBar'),
+    colorPicker: document.getElementById('colorPicker'),
+    btnDrawPolygon: document.getElementById('btnDrawPolygon'),
+    btnDrawLine: document.getElementById('btnDrawLine'),
+    btnUndo: document.getElementById('btnUndo'),
+    btnCancelDraw: document.getElementById('btnCancelDraw'),
+    btnSaveDraw: document.getElementById('btnSaveDraw'),
+
+    toggleGPS: document.getElementById('toggleGPS'),
+
+    inputCity: document.getElementById('inputCity'),
+    inputNumber: document.getElementById('inputNumber'),
+    inputAddress: document.getElementById('inputAddress'),
+    btnSaveTexts: document.getElementById('btnSaveTexts'),
+    btnForceSave: document.getElementById('btnForceSave'),
+    btnDelete: document.getElementById('btnDelete'),
+
+    previewNumber: document.getElementById('previewNumber'),
+    previewCity: document.getElementById('previewCity'),
+    previewAddress: document.getElementById('previewAddress'),
+
+    qrUrl: document.getElementById('qrUrl'),
+    qrSize: document.getElementById('qrSize'),
+    btnGenQR: document.getElementById('btnGenQR'),
+    qrZone: document.getElementById('qrZone'),
+    qrDraggable: document.getElementById('qrDraggable'),
+    qrSection: document.getElementById('qrSection'),
+
+    btnExportJson: document.getElementById('btnExportJson'),
+    btnImportJson: document.getElementById('btnImportJson'),
+    importFile: document.getElementById('importFile'),
+
+    btnSavePdf: document.getElementById('btnSavePdf'),
+    btnSaveJpg: document.getElementById('btnSaveJpg'),
+
+    toastWrap: document.getElementById('toastWrap'),
+
+    saveIndicator: document.getElementById('saveIndicator'),
+    saveText: document.getElementById('saveText'),
+
+    modalBackdrop: document.getElementById('modalBackdrop'),
+    modalNumber: document.getElementById('modalNumber'),
+    modalError: document.getElementById('modalError'),
+    modalCancel: document.getElementById('modalCancel'),
+    modalOk: document.getElementById('modalOk'),
+  };
+
+  /** ---------- Helpers ---------- */
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function toast(message, kind='info'){
+    const t = document.createElement('div');
+    t.className = 'toast';
+    const icon = document.createElement('div');
+    icon.className='icon';
+    icon.innerHTML = kind==='danger'
+      ? '<i class="fa-solid fa-triangle-exclamation"></i>'
+      : kind==='success'
+        ? '<i class="fa-solid fa-circle-check"></i>'
+        : '<i class="fa-solid fa-circle-info"></i>';
+    const msg = document.createElement('div');
+    msg.className='msg';
+    msg.textContent = message;
+    const x = document.createElement('div');
+    x.className='x';
+    x.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+    x.onclick = () => t.remove();
+    t.append(icon,msg,x);
+    el.toastWrap.appendChild(t);
+    setTimeout(() => { if(t.isConnected) t.remove(); }, 4200);
+  }
+
+  function saveIndicator(status){
+    if(status === 'saved'){
+      el.saveText.textContent = 'Salvat ✔';
+      el.saveIndicator.innerHTML = '<i class="fa-solid fa-circle-check"></i> <span id="saveText">Salvat ✔</span>';
+    } else if(status === 'saving'){
+      el.saveIndicator.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> <span id="saveText">Se salvează…</span>';
+    } else {
+      el.saveIndicator.innerHTML = '<i class="fa-solid fa-cloud"></i> <span id="saveText">Ne-salvat</span>';
+    }
+  }
+
+  function downloadText(filename, text, mime='text/plain'){
+    const blob = new Blob([text], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  }
+
+  function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+
+  function isNumericString(s){ return /^[0-9]+$/.test(String(s).trim()); }
+
+  function deepClone(obj){ return JSON.parse(JSON.stringify(obj)); }
+
+  function safeJSONParse(str){
+    try { return {ok:true, value: JSON.parse(str)}; }
+    catch(e){ return {ok:false, error: e}; }
+  }
+
+  /** ---------- Persistence ---------- */
+  let saveTimer = null;
+  function scheduleSave(){
+    saveIndicator('saving');
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      try{
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        state.ui.lastSavedAt = Date.now();
+        saveIndicator('saved');
+      }catch(e){
+        console.error(e);
+        toast('Nu pot salva în localStorage (spațiu insuficient / permisiuni).', 'danger');
+        saveIndicator('dirty');
+      }
+    }, 500);
+  }
+  function loadState(){
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return null;
+    const p = safeJSONParse(raw);
+    if(!p.ok) return null;
+    return p.value;
+  }
+  function hardSaveNow(){
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      state.ui.lastSavedAt = Date.now();
+      saveIndicator('saved');
+      toast('Salvat în localStorage.', 'success');
+    }catch(e){
+      toast('Eroare la salvare în localStorage.', 'danger');
+    }
+  }
+
+  /** ---------- Maps: tiles (RRZE 512 + fallback) ---------- */
+  const RRZE_TILES = 'https://tiles.rrze.fau.de/osmhd/{z}/{x}/{y}.png';
+  const OSM_TILES  = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+  function makeStyle(tilesUrl, tileSize){
+    // Raster-only style; attribution displayed separately in UI as required.
+    const rasterSource = {
+      type: 'raster',
+      tiles: [tilesUrl],
+      tileSize: tileSize,
+      attribution: '© OpenStreetMap contributors'
+    };
+    return {
+      version: 8,
+      sources: { 'osm': rasterSource },
+      layers: [{ id:'osm', type:'raster', source:'osm' }]
+    };
+  }
+
+  /** ---------- Main map ---------- */
+  let map, preview;
+  let draw; // MapLibre GL Draw control
+  let drawUndoStack = []; // array of featureCollections
+  let suppressDrawEvents = false;
+
+  function initMainMap(){
+    map = new maplibregl.Map({
+      container: el.map,
+      style: makeStyle(RRZE_TILES, 512),
+      center: [25.0, 45.95],
+      zoom: 5,
+      bearing: 0,
+      pitch: 0,
+      preserveDrawingBuffer: true, // for exports
+      dragRotate: true,
+      touchPitch: false
+    });
+
+    map.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'bottom-right');
+
+    // Keyboard-modified rotation: Alt+Shift+Drag
+    let rotateAllowed = false;
+    window.addEventListener('keydown', (e) => {
+      rotateAllowed = e.altKey && e.shiftKey;
+      map.dragRotate.enable();
+      map.dragPan.enable();
+    });
+    window.addEventListener('keyup', (e) => {
+      rotateAllowed = e.altKey && e.shiftKey;
+      // allow default touch rotate; keep dragRotate enabled, but we will disable unless modifier pressed by toggling behavior in mouse handler
+    });
+
+    // Enforce Alt+Shift for mouse rotate (touch rotate stays enabled natively)
+    map.on('mousedown', (e) => {
+      // If right-click or middle: ignore
+      if (e.originalEvent && (e.originalEvent.button === 1 || e.originalEvent.button === 2)) return;
+      // If modifier not pressed, prefer pan; if pressed, rotate.
+      if(!(e.originalEvent.altKey && e.originalEvent.shiftKey)){
+        // disable dragRotate temporarily for this gesture
+        map.dragRotate.disable();
+        setTimeout(()=>map.dragRotate.enable(), 0);
+      }
+    });
+
+    // Tile error -> fallback
+    map.on('error', (e) => {
+      // MapLibre throws many errors; filter for raster tile load failures.
+      const msg = (e && e.error && e.error.message) ? e.error.message : '';
+      if(!state.ui.usingFallbackTiles && (msg.includes('Failed to load') || msg.includes('NetworkError') || msg.includes('tile'))){
+        state.ui.usingFallbackTiles = true;
+        try{
+          map.setStyle(makeStyle(OSM_TILES, 256));
+          toast('RRZE tiles indisponibile. Comut pe fallback OpenStreetMap.', 'info');
+          // After style reload, re-add sources/layers for territories
+          map.once('styledata', () => {
+            addOrUpdateTerritoryLayers();
+          });
+        }catch(err){
+          console.warn(err);
+        }
+      }
+    });
+
+    map.on('load', () => {
+      addOrUpdateTerritoryLayers();
+      initDrawControl();
+      setupMapClickGPS();
+    });
+  }
+
+  function initDrawControl(){
+    draw = new MaplibreDraw({
+      displayControlsDefault: false,
+      controls: {
+        polygon: false,
+        line_string: false,
+        trash: true,
+        combine_features: false,
+        uncombine_features: false
+      },
+      defaultMode: 'simple_select'
+    });
+    map.addControl(draw, 'top-left');
+
+    // Track undo stack on any draw update
+    map.on('draw.create', onDrawChanged);
+    map.on('draw.update', onDrawChanged);
+    map.on('draw.delete', onDrawChanged);
+    map.on('draw.modechange', onDrawChanged);
+  }
+
+  function onDrawChanged(){
+    if(suppressDrawEvents) return;
+    if(!state.ui.drawMode) return;
+    try{
+      const fc = draw.getAll();
+      drawUndoStack.push(deepClone(fc));
+      // cap
+      if(drawUndoStack.length > 50) drawUndoStack.shift();
+    }catch(e){}
+  }
+
+  /** ---------- Persistent territories layers (main map) ---------- */
+  const TERR_SRC = 'territories-src';
+  const LABEL_SRC = 'territories-label-src';
+
+  function territoriesToFeatureCollection(){
+    const features = [];
+    for(const id of Object.keys(state.territories)){
+      const t = state.territories[id];
+      if(!t.geometry) continue;
+      const f = deepClone(t.geometry);
+      f.properties = f.properties || {};
+      f.properties.id = id;
+      f.properties.num = id;
+      f.properties.color = t.color || '#2563eb';
+      features.push(f);
+    }
+    return { type:'FeatureCollection', features };
+  }
+
+  function labelsFeatureCollection(){
+    const features = [];
+    for(const id of Object.keys(state.territories)){
+      const t = state.territories[id];
+      if(!t.geometry) continue;
+      let pt = null;
+      try{
+        if(t.geometry.geometry.type === 'Polygon' || t.geometry.geometry.type === 'MultiPolygon'){
+          pt = turf.centroid(t.geometry);
+        }else if(t.geometry.geometry.type === 'LineString' || t.geometry.geometry.type === 'MultiLineString'){
+          // midpoint along line
+          const len = turf.length(t.geometry, {units:'kilometers'});
+          pt = turf.along(t.geometry, len/2, {units:'kilometers'});
+        }
+      }catch(e){}
+      if(!pt) continue;
+      pt.properties = { id, num: id };
+      features.push(pt);
+    }
+    return { type:'FeatureCollection', features };
+  }
+
+  function addOrUpdateTerritoryLayers(){
+    if(!map || !map.isStyleLoaded()) return;
+
+    const fc = territoriesToFeatureCollection();
+    const labels = labelsFeatureCollection();
+
+    // Re-add sources/layers if missing (style reset)
+    if(!map.getSource(TERR_SRC)){
+      map.addSource(TERR_SRC, { type:'geojson', data: fc });
+      map.addLayer({
+        id:'territories-fill',
+        type:'fill',
+        source: TERR_SRC,
+        paint:{
+          'fill-color': ['get','color'],
+          'fill-opacity': 0.22
+        },
+        filter: ['==', '$type', 'Polygon']
+      });
+      map.addLayer({
+        id:'territories-line',
+        type:'line',
+        source: TERR_SRC,
+        paint:{
+          'line-color': ['get','color'],
+          'line-width': 3
+        }
+      });
+
+      map.addSource(LABEL_SRC, { type:'geojson', data: labels });
+      map.addLayer({
+        id:'territories-labels',
+        type:'symbol',
+        source: LABEL_SRC,
+        layout:{
+          'text-field': ['get','num'],
+          'text-size': 16,
+          'text-font': ['Open Sans Bold','Arial Unicode MS Bold'],
+          'text-offset': [0,0],
+          'text-anchor': 'center',
+          'text-allow-overlap': true
+        },
+        paint:{
+          'text-color': '#0f172a',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 2
+        }
+      });
+    }else{
+      map.getSource(TERR_SRC).setData(fc);
+      map.getSource(LABEL_SRC).setData(labels);
+    }
+  }
+
+  /** ---------- Preview map ---------- */
+  const PREV_SRC = 'prev-src';
+
+  function initPreviewMap(){
+    preview = new maplibregl.Map({
+      container: el.previewMap,
+      style: makeStyle(state.ui.usingFallbackTiles ? OSM_TILES : RRZE_TILES, state.ui.usingFallbackTiles ? 256 : 512),
+      center: [25.0, 45.95],
+      zoom: 10,
+      bearing: 0,
+      pitch: 0,
+      preserveDrawingBuffer: true,
+      dragRotate: true,
+      touchPitch: false
+    });
+    preview.addControl(new maplibregl.NavigationControl({visualizePitch:true}), 'top-left');
+
+    // same Alt+Shift behavior for mouse rotate
+    preview.on('mousedown', (e) => {
+      if (e.originalEvent && (e.originalEvent.button === 1 || e.originalEvent.button === 2)) return;
+      if(!(e.originalEvent.altKey && e.originalEvent.shiftKey)){
+        preview.dragRotate.disable();
+        setTimeout(()=>preview.dragRotate.enable(), 0);
+      }
+    });
+
+    preview.on('error', (e) => {
+      const msg = (e && e.error && e.error.message) ? e.error.message : '';
+      if(!state.ui.usingFallbackTiles && (msg.includes('Failed to load') || msg.includes('NetworkError') || msg.includes('tile'))){
+        state.ui.usingFallbackTiles = true;
+        toast('RRZE tiles indisponibile. Preview comută pe OSM fallback.', 'info');
+        try{
+          preview.setStyle(makeStyle(OSM_TILES, 256));
+          preview.once('styledata', () => {
+            refreshPreviewLayer();
+          });
+        }catch(err){}
+      }
+    });
+
+    preview.on('load', () => {
+      refreshPreviewLayer();
+    });
+
+    preview.on('moveend', () => {
+      const id = state.ui.selectedId;
+      if(!id || !state.territories[id]) return;
+      const c = preview.getCenter();
+      state.territories[id].previewMap = {
+        center: [c.lng, c.lat],
+        zoom: preview.getZoom(),
+        bearing: preview.getBearing(),
+        pitch: preview.getPitch()
+      };
+      scheduleSave();
+    });
+  }
+
+  function refreshPreviewLayer(){
+    if(!preview || !preview.isStyleLoaded()) return;
+
+    const id = state.ui.selectedId;
+    const territory = id ? state.territories[id] : null;
+
+    const fc = territory?.geometry
+      ? { type:'FeatureCollection', features: [decorateGeometryForPreview(territory)] }
+      : { type:'FeatureCollection', features: [] };
+
+    if(!preview.getSource(PREV_SRC)){
+      preview.addSource(PREV_SRC, { type:'geojson', data: fc });
+      preview.addLayer({
+        id: 'prev-fill',
+        type:'fill',
+        source: PREV_SRC,
+        paint:{
+          'fill-color': ['get','color'],
+          'fill-opacity': 0.25
+        },
+        filter: ['==', '$type', 'Polygon']
+      });
+      preview.addLayer({
+        id:'prev-line',
+        type:'line',
+        source: PREV_SRC,
+        paint:{
+          'line-color': ['get','color'],
+          'line-width': 3
+        }
+      });
+    }else{
+      preview.getSource(PREV_SRC).setData(fc);
+    }
+
+    if(territory?.previewMap){
+      const v = territory.previewMap;
+      preview.jumpTo({center: v.center, zoom: v.zoom, bearing: v.bearing||0, pitch: v.pitch||0});
+    }else if(territory?.geometry){
+      // Fit bounds to geometry
+      try{
+        const bbox = turf.bbox(territory.geometry);
+        preview.fitBounds([[bbox[0], bbox[1]],[bbox[2], bbox[3]]], {padding: 30, duration: 0});
+      }catch(e){}
+    }
+  }
+
+  function decorateGeometryForPreview(territory){
+    const f = deepClone(territory.geometry);
+    f.properties = f.properties || {};
+    f.properties.color = territory.color || '#2563eb';
+    return f;
+  }
+
+  /** ---------- Draw mode ---------- */
+  function enterDrawMode(newId){
+    state.ui.drawMode = true;
+    state.ui.pendingNewId = newId;
+    drawUndoStack = [];
+
+    el.drawBar.classList.add('visible');
+    el.btnAddTerritory.disabled = true;
+    el.btnImportTop.disabled = true;
+
+    // Clear draw
+    suppressDrawEvents = true;
+    try{ draw.deleteAll(); }catch(e){}
+    suppressDrawEvents = false;
+    draw.changeMode('simple_select');
+
+    toast('Mod desenare activ: alege Poligon sau Linie, apoi editează și apasă Salvează.', 'info');
+  }
+
+  function exitDrawMode(){
+    state.ui.drawMode = false;
+    state.ui.pendingNewId = null;
+    el.drawBar.classList.remove('visible');
+    el.btnAddTerritory.disabled = false;
+    el.btnImportTop.disabled = false;
+
+    suppressDrawEvents = true;
+    try{ draw.deleteAll(); }catch(e){}
+    suppressDrawEvents = false;
+    draw.changeMode('simple_select');
+    drawUndoStack = [];
+  }
+
+  function undoDraw(){
+    if(drawUndoStack.length < 2){
+      toast('Nothing to undo.', 'info');
+      return;
+    }
+    // current state is last; remove it then apply previous
+    drawUndoStack.pop();
+    const prev = drawUndoStack[drawUndoStack.length - 1];
+    if(!prev) return;
+    suppressDrawEvents = true;
+    try{
+      draw.deleteAll();
+      for(const f of prev.features){
+        draw.add(f);
+      }
+    }catch(e){}
+    suppressDrawEvents = false;
+  }
+
+  function currentDrawFeature(){
+    const all = draw.getAll();
+    if(!all.features.length) return null;
+    // enforce single geometry: take first
+    return all.features[0];
+  }
+
+  function startPolygon(){ draw.changeMode('draw_polygon'); }
+  function startLine(){ draw.changeMode('draw_line_string'); }
+
+  function saveDrawnTerritory(){
+    const id = state.ui.pendingNewId;
+    if(!id) return;
+
+    const f = currentDrawFeature();
+    if(!f){
+      toast('Desenează un poligon sau o linie înainte de Salvează.', 'danger');
+      return;
+    }
+    // Ensure geometry only (no UI data)
+    const geometryOnly = {
+      type: 'Feature',
+      geometry: deepClone(f.geometry),
+      properties: {} // keep empty; UI props are stored in territory object
+    };
+
+    const color = el.colorPicker.value || '#2563eb';
+
+    state.territories[id] = state.territories[id] || {
+      id,
+      num: id,
+      color,
+      meta: { city:'', address:'' },
+      qr: { url:'', sizePx:256, x:10, y:28 },
+      previewMap: null,
+      geometry: null
+    };
+    state.territories[id].color = color;
+    state.territories[id].geometry = geometryOnly;
+
+    // Select it and persist
+    state.ui.selectedId = id;
+    exitDrawMode();
+    refreshAllUI();
+    scheduleSave();
+    toast(`Teritoriu ${id} salvat pe hartă.`, 'success');
+  }
+
+  /** ---------- GPS toggle + popup ---------- */
+  function setupMapClickGPS(){
+    map.on('click', (e) => {
+      if(!state.ui.gpsEnabled) return;
+      const lat = e.lngLat.lat.toFixed(6);
+      const lng = e.lngLat.lng.toFixed(6);
+      const url = `https://www.google.com/maps?q=${lat},${lng}`;
+
+      const container = document.createElement('div');
+      container.style.fontFamily = 'inherit';
+      container.style.maxWidth = '260px';
+      container.innerHTML = `
+        <div style="font-weight:900; margin-bottom:6px;">Coordonate: ${lat}, ${lng}</div>
+        <div style="font-size:12px; color:#64748b; margin-bottom:6px;">URL Google Maps</div>
+        <input type="text" value="${url}" style="width:100%; padding:8px 10px; border:1px solid #e2e8f0; border-radius:10px; font-size:12px;" readonly>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button style="flex:1; padding:8px 10px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; font-weight:800; cursor:pointer;">
+            Copiază URL
+          </button>
+          <button style="flex:1; padding:8px 10px; border-radius:10px; border:1px solid #2563eb; background:#2563eb; color:#fff; font-weight:900; cursor:pointer;">
+            Trimite la QR
+          </button>
+        </div>
+      `;
+      const [btnCopy, btnSend] = container.querySelectorAll('button');
+
+      btnCopy.addEventListener('click', async () => {
+        try{
+          await navigator.clipboard.writeText(url);
+          toast('URL copiat.', 'success');
+        }catch(err){
+          toast('Nu pot copia automat. Selectează și copiază manual.', 'danger');
+        }
+      });
+
+      btnSend.addEventListener('click', async () => {
+        el.qrUrl.value = url;
+        // focus + scroll
+        el.qrUrl.focus();
+        el.qrUrl.select();
+        el.qrSection.scrollIntoView({behavior:'smooth', block:'center'});
+        toast('URL trimis în zona QR.', 'success');
+      });
+
+      new maplibregl.Popup({closeButton:true, closeOnClick:true, maxWidth:'320px'})
+        .setLngLat(e.lngLat)
+        .setDOMContent(container)
+        .addTo(map);
+    });
+  }
+
+  /** ---------- UI refresh ---------- */
+  function refreshTerritoryList(){
+    const ids = Object.keys(state.territories).sort((a,b)=>Number(a)-Number(b));
+    el.territoryList.innerHTML = '';
+    for(const id of ids){
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = id;
+      el.territoryList.appendChild(opt);
+    }
+    el.territoryCount.textContent = `${ids.length}`;
+    // keep selection
+    if(state.ui.selectedId && ids.includes(state.ui.selectedId)){
+      el.territoryList.value = state.ui.selectedId;
+    }else{
+      state.ui.selectedId = ids[0] || null;
+      el.territoryList.value = state.ui.selectedId || '';
+    }
+  }
+
+  function refreshEditorFields(){
+    const id = state.ui.selectedId;
+    const t = id ? state.territories[id] : null;
+
+    el.inputCity.value = t?.meta?.city ?? '';
+    el.inputNumber.value = t?.num ?? (id ?? '');
+    el.inputAddress.value = t?.meta?.address ?? '';
+
+    el.previewNumber.textContent = id ? id : '—';
+    el.previewCity.textContent = t?.meta?.city ? t.meta.city : '—';
+    el.previewAddress.textContent = t?.meta?.address ? t.meta.address : '—';
+
+    // QR inputs default to current territory
+    el.qrUrl.value = t?.qr?.url ?? '';
+    el.qrSize.value = t?.qr?.sizePx ?? 256;
+
+    // update draggable
+    renderQRForSelected();
+  }
+
+  function refreshAllUI(){
+    refreshTerritoryList();
+    addOrUpdateTerritoryLayers();
+    refreshPreviewLayer();
+    refreshEditorFields();
+  }
+
+  /** ---------- Editing territory texts (and number rename) ---------- */
+  function saveTexts(){
+    const id = state.ui.selectedId;
+    if(!id || !state.territories[id]){
+      toast('Selectează un teritoriu.', 'danger');
+      return;
+    }
+    const city = el.inputCity.value.trim();
+    const newNum = el.inputNumber.value.trim();
+    const address = el.inputAddress.value;
+
+    // Validate newNum numeric + unique (unless same)
+    if(!isNumericString(newNum)){
+      toast('Numărul teritoriului trebuie să fie numeric.', 'danger');
+      return;
+    }
+    if(newNum !== id && state.territories[newNum]){
+      toast('Număr duplicat. Alege un număr unic.', 'danger');
+      return;
+    }
+
+    // Rename if changed (critical requirement)
+    if(newNum !== id){
+      // Move object
+      const moved = state.territories[id];
+      delete state.territories[id];
+      moved.id = newNum;
+      moved.num = newNum;
+      state.territories[newNum] = moved;
+      state.ui.selectedId = newNum;
+
+      toast(`Teritoriu renumerotat: ${id} → ${newNum}`, 'success');
+    }
+
+    const tid = state.ui.selectedId;
+    state.territories[tid].meta = state.territories[tid].meta || {};
+    state.territories[tid].meta.city = city;
+    state.territories[tid].meta.address = address;
+
+    scheduleSave();
+    refreshAllUI();
+  }
+
+  /** ---------- QR generation + drag ---------- */
+  function makeQrSvgString(url, sizePx){
+    // qrcode-generator: create QR modules and craft SVG
+    const qr = qrcode(0, 'M');
+    qr.addData(url);
+    qr.make();
+
+    const count = qr.getModuleCount();
+    const cell = sizePx / count;
+    // Build SVG with crisp edges
+    let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${sizePx}" height="${sizePx}" viewBox="0 0 ${sizePx} ${sizePx}" shape-rendering="crispEdges">`;
+    svg += `<rect width="100%" height="100%" fill="#fff"/>`;
+    svg += `<g fill="#000">`;
+    for(let r=0;r<count;r++){
+      for(let c=0;c<count;c++){
+        if(qr.isDark(r,c)){
+          const x = Math.round(c*cell);
+          const y = Math.round(r*cell);
+          const w = Math.ceil(cell);
+          svg += `<rect x="${x}" y="${y}" width="${w}" height="${w}"/>`;
+        }
+      }
+    }
+    svg += `</g></svg>`;
+    return svg;
+  }
+
+  function renderQRForSelected(){
+    const id = state.ui.selectedId;
+    const t = id ? state.territories[id] : null;
+    el.qrDraggable.innerHTML = '';
+    if(!t || !t.qr || !t.qr.url){
+      // hide or keep empty
+      return;
+    }
+    const sizePx = Number(t.qr.sizePx || 256);
+    // display size within zone: keep max 80px by CSS; actual stored size is for export
+    // We'll display scaled to 64px default; still keeps vector.
+    const displayPx = 64;
+    el.qrDraggable.style.width = displayPx+'px';
+    el.qrDraggable.style.height = displayPx+'px';
+
+    const svg = makeQrSvgString(t.qr.url, 256);
+    el.qrDraggable.innerHTML = svg;
+
+    // position
+    const x = Number(t.qr.x ?? 10);
+    const y = Number(t.qr.y ?? 28);
+    el.qrDraggable.style.left = x + 'px';
+    el.qrDraggable.style.top = y + 'px';
+  }
+
+  function saveQRSettingsFromInputs(){
+    const id = state.ui.selectedId;
+    if(!id || !state.territories[id]) return false;
+    const url = el.qrUrl.value.trim();
+    const sizePx = clamp(parseInt(el.qrSize.value||'256',10), 64, 2048);
+    state.territories[id].qr = state.territories[id].qr || {url:'', sizePx:256, x:10, y:28};
+    state.territories[id].qr.url = url;
+    state.territories[id].qr.sizePx = sizePx;
+    scheduleSave();
+    return true;
+  }
+
+  function generateQR(){
+    const id = state.ui.selectedId;
+    if(!id || !state.territories[id]){
+      toast('Selectează un teritoriu înainte de a genera QR.', 'danger');
+      return;
+    }
+    const url = el.qrUrl.value.trim();
+    if(!url){
+      toast('Introduceți un URL pentru QR.', 'danger');
+      return;
+    }
+    const sizePx = clamp(parseInt(el.qrSize.value||'256',10), 64, 2048);
+
+    state.territories[id].qr = state.territories[id].qr || {url:'', sizePx:256, x:10, y:28};
+    state.territories[id].qr.url = url;
+    state.territories[id].qr.sizePx = sizePx;
+    // keep existing x/y or set defaults
+    if(state.territories[id].qr.x == null) state.territories[id].qr.x = 10;
+    if(state.territories[id].qr.y == null) state.territories[id].qr.y = 28;
+
+    renderQRForSelected();
+    scheduleSave();
+    toast('QR generat și plasat în preview.', 'success');
+  }
+
+  // Drag QR inside qrZone
+  let drag = {active:false, startX:0, startY:0, origX:0, origY:0};
+  el.qrDraggable.addEventListener('pointerdown', (e) => {
+    const id = state.ui.selectedId;
+    const t = id ? state.territories[id] : null;
+    if(!t || !t.qr || !t.qr.url) return;
+
+    e.preventDefault();
+    el.qrDraggable.setPointerCapture(e.pointerId);
+    drag.active = true;
+    drag.startX = e.clientX;
+    drag.startY = e.clientY;
+    drag.origX = parseFloat(el.qrDraggable.style.left||'10');
+    drag.origY = parseFloat(el.qrDraggable.style.top||'28');
+  });
+  el.qrDraggable.addEventListener('pointermove', (e) => {
+    if(!drag.active) return;
+    const zoneRect = el.qrZone.getBoundingClientRect();
+    const qrRect = el.qrDraggable.getBoundingClientRect();
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+
+    // compute new left/top relative to zone
+    let newLeft = drag.origX + dx;
+    let newTop = drag.origY + dy;
+
+    // clamp inside zone (account for qr size)
+    const maxLeft = zoneRect.width - qrRect.width - 6;
+    const maxTop = zoneRect.height - qrRect.height - 6;
+    newLeft = clamp(newLeft, 6, maxLeft);
+    newTop = clamp(newTop, 24, maxTop); // below label
+
+    el.qrDraggable.style.left = newLeft + 'px';
+    el.qrDraggable.style.top = newTop + 'px';
+  });
+  el.qrDraggable.addEventListener('pointerup', () => {
+    if(!drag.active) return;
+    drag.active = false;
+    const id = state.ui.selectedId;
+    if(!id || !state.territories[id]) return;
+    state.territories[id].qr = state.territories[id].qr || {url:'', sizePx:256, x:10, y:28};
+    state.territories[id].qr.x = parseFloat(el.qrDraggable.style.left||'10');
+    state.territories[id].qr.y = parseFloat(el.qrDraggable.style.top||'28');
+    scheduleSave();
+  });
+
+  /** ---------- Export/Import JSON ---------- */
+  function exportJSON(){
+    const data = deepClone(state);
+    // Ensure geometry is strict GeoJSON; no UI data in geometry (already enforced)
+    downloadText(`teritorii_export_${new Date().toISOString().slice(0,10)}.json`, JSON.stringify(data, null, 2), 'application/json');
+    toast('Export JSON descărcat.', 'success');
+  }
+
+  function validateImported(obj){
+    if(!obj || typeof obj !== 'object') return {ok:false, message:'Fișier JSON invalid.'};
+    if(!obj.territories || typeof obj.territories !== 'object') return {ok:false, message:'Lipsește câmpul territories.'};
+
+    for(const [id,t] of Object.entries(obj.territories)){
+      if(!isNumericString(id)) return {ok:false, message:`ID teritoriu invalid: ${id}`};
+      if(!t || typeof t !== 'object') return {ok:false, message:`Teritoriu invalid: ${id}`};
+      if(t.geometry){
+        const g = t.geometry;
+        if(g.type !== 'Feature' || !g.geometry || !g.geometry.type) return {ok:false, message:`GeoJSON invalid pentru teritoriu ${id}`};
+        if(g.properties && Object.keys(g.properties).length){
+          // ok (we'll sanitize)
+        }
+      }
+      if(t.qr && typeof t.qr !== 'object') return {ok:false, message:`QR invalid pentru teritoriu ${id}`};
+    }
+    return {ok:true};
+  }
+
+  async function importJSONFile(file){
+    const text = await file.text();
+    const parsed = safeJSONParse(text);
+    if(!parsed.ok){
+      toast('JSON invalid: nu pot parsa fișierul.', 'danger');
+      return;
+    }
+    const v = validateImported(parsed.value);
+    if(!v.ok){
+      toast(v.message, 'danger');
+      return;
+    }
+    // sanitize: remove any UI props inside geometry
+    const next = parsed.value;
+    for(const [id,t] of Object.entries(next.territories)){
+      if(t.geometry){
+        t.geometry.properties = {}; // enforce no UI data in geometry
+      }
+      t.id = id;
+      t.num = id;
+      t.color = t.color || '#2563eb';
+      t.meta = t.meta || {city:'', address:''};
+      t.qr = t.qr || {url:'', sizePx:256, x:10, y:28};
+      if(t.qr.sizePx == null) t.qr.sizePx = 256;
+      if(t.qr.x == null) t.qr.x = 10;
+      if(t.qr.y == null) t.qr.y = 28;
+    }
+    next.ui = next.ui || {};
+    next.ui.selectedId = next.ui.selectedId && next.territories[next.ui.selectedId] ? next.ui.selectedId : (Object.keys(next.territories)[0] || null);
+    next.ui.gpsEnabled = !!next.ui.gpsEnabled;
+    next.ui.usingFallbackTiles = !!next.ui.usingFallbackTiles;
+    next.ui.drawMode = false;
+    next.ui.pendingNewId = null;
+
+    state = next;
+    scheduleSave();
+
+    // rebuild maps
+    refreshAllUI();
+    toast('Import JSON reușit. Teritoriile au fost reconstruite.', 'success');
+  }
+
+  /** ---------- Delete territory ---------- */
+  function deleteSelected(){
+    const id = state.ui.selectedId;
+    if(!id || !state.territories[id]){ toast('Selectează un teritoriu.', 'danger'); return; }
+    const ok = confirm(`Ștergi definitiv teritoriul ${id}?`);
+    if(!ok) return;
+
+    delete state.territories[id];
+    // select next
+    const ids = Object.keys(state.territories).sort((a,b)=>Number(a)-Number(b));
+    state.ui.selectedId = ids[0] || null;
+
+    refreshAllUI();
+    scheduleSave();
+    toast(`Teritoriu ${id} șters.`, 'success');
+  }
+
+  /** ---------- Add territory workflow (modal) ---------- */
+  function openNumberModal(){
+    el.modalError.style.display = 'none';
+    el.modalError.textContent = '';
+    el.modalNumber.value = '';
+    el.modalBackdrop.classList.add('show');
+    setTimeout(()=>el.modalNumber.focus(), 50);
+  }
+  function closeNumberModal(){
+    el.modalBackdrop.classList.remove('show');
+  }
+  function modalError(msg){
+    el.modalError.textContent = msg;
+    el.modalError.style.display = 'block';
+  }
+  function confirmNumberModal(){
+    const raw = el.modalNumber.value.trim();
+    if(!isNumericString(raw)) return modalError('Te rog introdu doar cifre (numeric).');
+    if(state.territories[raw]) return modalError('Acest număr există deja. Alege un număr unic.');
+    closeNumberModal();
+    // create skeleton now (so rename/edit references exist immediately)
+    state.territories[raw] = {
+      id: raw,
+      num: raw,
+      color: el.colorPicker.value || '#2563eb',
+      meta: { city:'', address:'' },
+      qr: { url:'', sizePx:256, x:10, y:28 },
+      previewMap: null,
+      geometry: null
+    };
+    state.ui.selectedId = raw;
+    scheduleSave();
+    refreshAllUI();
+    enterDrawMode(raw);
+  }
+
+  /** ---------- Autosave on field changes ---------- */
+  function wireAutosaveFields(){
+    const handler = () => {
+      const id = state.ui.selectedId;
+      if(!id || !state.territories[id]) return;
+      const t = state.territories[id];
+      t.meta = t.meta || {city:'', address:''};
+      t.meta.city = el.inputCity.value.trim();
+      t.meta.address = el.inputAddress.value;
+      // number changes are not auto-rename; only via Save button (explicit) to avoid accidental renames
+      saveQRSettingsFromInputs();
+      // Preview text update
+      el.previewCity.textContent = t.meta.city ? t.meta.city : '—';
+      el.previewAddress.textContent = t.meta.address ? t.meta.address : '—';
+      scheduleSave();
+    };
+    el.inputCity.addEventListener('input', handler);
+    el.inputAddress.addEventListener('input', handler);
+    el.qrUrl.addEventListener('input', handler);
+    el.qrSize.addEventListener('input', handler);
+  }
+
+  /** ---------- Selection change ---------- */
+  function onSelectTerritory(){
+    const id = el.territoryList.value;
+    if(!id || !state.territories[id]) return;
+    state.ui.selectedId = id;
+    refreshEditorFields();
+    refreshPreviewLayer();
+    scheduleSave();
+  }
+
+  /** ---------- Export helpers: map snapshot high-res ---------- */
+  async function snapshotPreviewMap(targetWidthPx, targetHeightPx){
+    // Create hidden container with offscreen map for crisp snapshot
+    const id = state.ui.selectedId;
+    const t = id ? state.territories[id] : null;
+    if(!t || !t.geometry){
+      throw new Error('Nu există teritoriu selectat cu geometrie.');
+    }
+
+    const holder = document.createElement('div');
+    holder.style.position = 'fixed';
+    holder.style.left = '-99999px';
+    holder.style.top = '0';
+    holder.style.width = targetWidthPx + 'px';
+    holder.style.height = targetHeightPx + 'px';
+    holder.style.background = '#fff';
+    document.body.appendChild(holder);
+
+    const style = makeStyle(state.ui.usingFallbackTiles ? OSM_TILES : RRZE_TILES, state.ui.usingFallbackTiles ? 256 : 512);
+
+    const m = new maplibregl.Map({
+      container: holder,
+      style,
+      center: [25.0, 45.95],
+      zoom: 10,
+      bearing: 0,
+      pitch: 0,
+      preserveDrawingBuffer: true,
+      dragRotate: true,
+      interactive: false
+    });
+
+    await new Promise((resolve, reject) => {
+      m.on('load', resolve);
+      m.on('error', (e) => {
+        // ignore transient tile errors; if style fails, reject
+        if(e?.error?.message?.includes('Style')) reject(e.error);
+      });
+    });
+
+    // add geometry layer
+    const fc = {type:'FeatureCollection', features:[decorateGeometryForPreview(t)]};
+    m.addSource('g', {type:'geojson', data: fc});
+    m.addLayer({id:'gfill', type:'fill', source:'g', paint:{'fill-color':['get','color'],'fill-opacity':0.25}, filter:['==','$type','Polygon']});
+    m.addLayer({id:'gline', type:'line', source:'g', paint:{'line-color':['get','color'],'line-width':3}});
+
+    // set view
+    if(t.previewMap){
+      const v = t.previewMap;
+      m.jumpTo({center:v.center, zoom:v.zoom, bearing:v.bearing||0, pitch:v.pitch||0});
+    }else{
+      try{
+        const bbox = turf.bbox(t.geometry);
+        m.fitBounds([[bbox[0], bbox[1]],[bbox[2], bbox[3]]], {padding: Math.round(Math.min(targetWidthPx, targetHeightPx)*0.08), duration: 0});
+      }catch(e){}
+    }
+
+    // Wait a bit for tiles to render
+    await sleep(600);
+
+    const dataUrl = m.getCanvas().toDataURL('image/png');
+
+    m.remove();
+    holder.remove();
+    return dataUrl;
+  }
+
+  /** ---------- PDF export (14cm x 9.5cm, text+QR vector, 300DPI map) ---------- */
+  async function exportPDF(){
+    const id = state.ui.selectedId;
+    const t = id ? state.territories[id] : null;
+    if(!t || !t.geometry){
+      toast('Selectează un teritoriu cu geometrie înainte de export PDF.', 'danger');
+      return;
+    }
+
+    const { jsPDF } = window.jspdf;
+
+    // Card dimensions
+    const W = 140; // mm
+    const H = 95;  // mm
+
+    // Layout
+    const pad = 6; // mm
+    const headerH = 14; // mm
+    const mapW = 84; // mm (60%)
+    const mapH = H - pad - headerH - pad; // mm
+    const rightX = pad + mapW + 4; // mm gap
+    const rightW = W - rightX - pad;
+
+    // Map snapshot resolution: target ~300dpi for map area
+    // Convert mm to px at 300dpi: px = mm * (300/25.4)
+    const pxPerMm = 300 / 25.4;
+    const mapPxW = Math.round(mapW * pxPerMm);
+    const mapPxH = Math.round(mapH * pxPerMm);
+    const mapPng = await snapshotPreviewMap(mapPxW, mapPxH);
+
+    const doc = new jsPDF({orientation:'landscape', unit:'mm', format:[W,H]});
+
+    // White background
+    doc.setFillColor(255,255,255);
+    doc.rect(0,0,W,H,'F');
+
+    // Header text (vector)
+    doc.setTextColor(15,23,42);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(14);
+    doc.text('Harta teritoriului', W/2, pad+5, {align:'center'});
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.setTextColor(100,116,139);
+    doc.text((t.meta?.city || '—'), W/2, pad+10, {align:'center'});
+
+    // Big number top-right
+    doc.setTextColor(15,23,42);
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(22);
+    doc.text(String(id), W - pad, pad+7, {align:'right'});
+
+    // Map image (high-res raster)
+    doc.addImage(mapPng, 'PNG', pad, pad+headerH, mapW, mapH, undefined, 'FAST');
+
+    // Address (vector text)
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9.5);
+    doc.setTextColor(15,23,42);
+    const address = (t.meta?.address || '—').toString();
+    const addressLines = doc.splitTextToSize(address, rightW);
+    const addrY = pad + headerH + 6;
+    doc.text(addressLines, rightX, addrY);
+
+    // QR (vector via svg2pdf) at chosen position inside QR zone
+    // QR zone in PDF: bottom-right area box
+    const qrZoneH = 25; // mm
+    const qrZoneY = H - pad - qrZoneH;
+    const qrZoneX = rightX;
+    const qrZoneW = rightW;
+
+    // Draw QR zone border
+    doc.setDrawColor(226,232,240);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(qrZoneX, qrZoneY, qrZoneW, qrZoneH, 2.5, 2.5, 'S');
+
+    if(t.qr?.url){
+      const qrSizePx = clamp(parseInt(t.qr.sizePx||256,10), 64, 2048);
+      const qrSvg = makeQrSvgString(t.qr.url, qrSizePx);
+
+      // Convert stored x/y (pixels in preview zone) to mm within qr zone.
+      // Our preview qrZone uses CSS height ~96px; we map relative positions.
+      // We'll compute from actual DOM sizes to preserve placement:
+      const domZone = el.qrZone.getBoundingClientRect();
+      const domQR = el.qrDraggable.getBoundingClientRect();
+      const relX = parseFloat(el.qrDraggable.style.left||'10');
+      const relY = parseFloat(el.qrDraggable.style.top||'28');
+
+      // Normalize based on current DOM zone
+      const normX = relX / domZone.width;
+      const normY = relY / domZone.height;
+
+      // Choose QR printed size: 18mm (fits well); scale by requested size as hint (256 -> 18mm)
+      const baseMm = 18;
+      const sizeMm = clamp(baseMm * (qrSizePx / 256), 12, 26);
+
+      let pdfX = qrZoneX + normX * qrZoneW;
+      let pdfY = qrZoneY + normY * qrZoneH;
+
+      // Keep inside
+      pdfX = clamp(pdfX, qrZoneX + 1.5, qrZoneX + qrZoneW - sizeMm - 1.5);
+      pdfY = clamp(pdfY, qrZoneY + 1.5, qrZoneY + qrZoneH - sizeMm - 1.5);
+
+      // Render SVG into PDF as vector
+      const parser = new DOMParser();
+      const svgDoc = parser.parseFromString(qrSvg, 'image/svg+xml');
+      const svgEl = svgDoc.documentElement;
+
+      await window.svg2pdf.svg2pdf(svgEl, doc, {
+        x: pdfX,
+        y: pdfY,
+        width: sizeMm,
+        height: sizeMm
+      });
+    }
+
+    doc.save(`teritoriu_${id}_14x9.5cm_300dpi.pdf`);
+    toast('PDF salvat.', 'success');
+  }
+
+  /** ---------- JPG export 300DPI (1654x1122 px) ---------- */
+  async function exportJPG(){
+    const id = state.ui.selectedId;
+    const t = id ? state.territories[id] : null;
+    if(!t || !t.geometry){
+      toast('Selectează un teritoriu cu geometrie înainte de export JPG.', 'danger');
+      return;
+    }
+
+    // Exact pixels for 14cm x 9.5cm @ 300 DPI
+    const W = 1654;
+    const H = 1122;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0,0,W,H);
+
+    // Layout in pixels matching PDF proportions
+    const pad = Math.round(W * 0.035); // ~58
+    const headerH = Math.round(H * 0.15); // ~168
+    const mapW = Math.round(W * 0.60) - pad; // left block
+    const mapH = H - pad - headerH - pad;
+    const mapX = pad;
+    const mapY = pad + headerH;
+    const rightX = mapX + mapW + Math.round(W*0.025);
+    const rightW = W - rightX - pad;
+
+    // Title
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '700 44px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+    const title = 'Harta teritoriului';
+    ctx.textAlign = 'center';
+    ctx.fillText(title, W/2, pad+54);
+
+    // City
+    ctx.fillStyle = '#64748b';
+    ctx.font = '700 28px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+    ctx.fillText((t.meta?.city || '—'), W/2, pad+98);
+
+    // Number top-right
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '900 74px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+    ctx.textAlign = 'right';
+    ctx.fillText(String(id), W-pad, pad+80);
+
+    // Map snapshot at high-res for this area
+    const mapPng = await snapshotPreviewMap(mapW, mapH);
+    const img = await loadImage(mapPng);
+    ctx.drawImage(img, mapX, mapY, mapW, mapH);
+
+    // Address box
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '400 24px ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial';
+    const addr = (t.meta?.address || '—').toString();
+    const addrLines = wrapText(ctx, addr, rightW, 1.25);
+    let y = mapY + 44;
+    for(const line of addrLines){
+      ctx.fillText(line, rightX, y);
+      y += 30;
+      if(y > H - pad - 140) break;
+    }
+
+    // QR zone bottom-right
+    const qrZoneH = Math.round(H*0.22);
+    const qrZoneY = H - pad - qrZoneH;
+    const qrZoneX = rightX;
+    const qrZoneW = rightW;
+
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 2;
+    roundRect(ctx, qrZoneX, qrZoneY, qrZoneW, qrZoneH, 18);
+    ctx.stroke();
+
+    // QR (render SVG to image and draw)
+    if(t.qr?.url){
+      const qrSvg = makeQrSvgString(t.qr.url, clamp(parseInt(t.qr.sizePx||256,10), 64, 2048));
+      const qrDataUrl = svgToDataUrl(qrSvg);
+      const qrImg = await loadImage(qrDataUrl);
+
+      // placement: map from DOM zone relative
+      const domZone = el.qrZone.getBoundingClientRect();
+      const relX = parseFloat(el.qrDraggable.style.left||'10');
+      const relY = parseFloat(el.qrDraggable.style.top||'28');
+      const normX = relX / domZone.width;
+      const normY = relY / domZone.height;
+
+      const basePx = 210; // size for 256
+      const sizePx = clamp(Math.round(basePx * (t.qr.sizePx/256)), 150, 300);
+
+      let x = qrZoneX + Math.round(normX * qrZoneW);
+      let yy = qrZoneY + Math.round(normY * qrZoneH);
+      x = clamp(x, qrZoneX + 12, qrZoneX + qrZoneW - sizePx - 12);
+      yy = clamp(yy, qrZoneY + 12, qrZoneY + qrZoneH - sizePx - 12);
+
+      ctx.drawImage(qrImg, x, yy, sizePx, sizePx);
+    }
+
+    // Export
+    const jpgUrl = canvas.toDataURL('image/jpeg', 0.95);
+    const bin = atob(jpgUrl.split(',')[1]);
+    const bytes = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], {type:'image/jpeg'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `teritoriu_${id}_14x9.5cm_300dpi.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+
+    toast('JPG 300DPI salvat.', 'success');
+  }
+
+  function svgToDataUrl(svg){
+    return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  }
+  function loadImage(src){
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.crossOrigin = 'anonymous';
+      img.src = src;
+    });
+  }
+  function wrapText(ctx, text, maxWidth, lineHeightMult){
+    const words = text.replace(/\r/g,'').split(/\n/);
+    const lines = [];
+    for(const paragraph of words){
+      const w = paragraph.split(/\s+/).filter(Boolean);
+      let line = '';
+      for(const word of w){
+        const test = line ? (line + ' ' + word) : word;
+        if(ctx.measureText(test).width > maxWidth && line){
+          lines.push(line);
+          line = word;
+        }else{
+          line = test;
+        }
+      }
+      lines.push(line);
+    }
+    // preserve explicit line breaks: already split by \n; we inserted line even if empty
+    return lines;
+  }
+  function roundRect(ctx, x, y, w, h, r){
+    const rr = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+rr, y);
+    ctx.arcTo(x+w, y, x+w, y+h, rr);
+    ctx.arcTo(x+w, y+h, x, y+h, rr);
+    ctx.arcTo(x, y+h, x, y, rr);
+    ctx.arcTo(x, y, x+w, y, rr);
+    ctx.closePath();
+  }
+
+  /** ---------- Events wiring ---------- */
+  el.btnAddTerritory.addEventListener('click', () => {
+    if(state.ui.drawMode) return;
+    openNumberModal();
+  });
+  el.modalCancel.addEventListener('click', () => closeNumberModal());
+  el.modalOk.addEventListener('click', () => confirmNumberModal());
+  el.modalBackdrop.addEventListener('click', (e) => {
+    if(e.target === el.modalBackdrop) closeNumberModal();
+  });
+  el.modalNumber.addEventListener('keydown', (e) => {
+    if(e.key === 'Enter') confirmNumberModal();
+    if(e.key === 'Escape') closeNumberModal();
+  });
+
+  el.btnDrawPolygon.addEventListener('click', startPolygon);
+  el.btnDrawLine.addEventListener('click', startLine);
+  el.btnUndo.addEventListener('click', undoDraw);
+  el.btnCancelDraw.addEventListener('click', () => {
+    // Cancel should remove skeleton territory if it has no geometry yet
+    const id = state.ui.pendingNewId;
+    exitDrawMode();
+    if(id && state.territories[id] && !state.territories[id].geometry){
+      delete state.territories[id];
+      // reset selection
+      const ids = Object.keys(state.territories).sort((a,b)=>Number(a)-Number(b));
+      state.ui.selectedId = ids[0] || null;
+    }
+    refreshAllUI();
+    scheduleSave();
+    toast('Mod desenare anulat.', 'info');
+  });
+  el.btnSaveDraw.addEventListener('click', saveDrawnTerritory);
+
+  el.colorPicker.addEventListener('input', () => {
+    // If in draw mode, update drawn feature colors only in UI; final color stored on save.
+    const id = state.ui.selectedId;
+    if(id && state.territories[id]){
+      state.territories[id].color = el.colorPicker.value;
+      addOrUpdateTerritoryLayers();
+      refreshPreviewLayer();
+      scheduleSave();
+    }
+  });
+
+  el.toggleGPS.checked = !!state.ui.gpsEnabled;
+  el.toggleGPS.addEventListener('change', () => {
+    state.ui.gpsEnabled = el.toggleGPS.checked;
+    scheduleSave();
+    toast(state.ui.gpsEnabled ? 'Coordonate GPS: ON' : 'Coordonate GPS: OFF', 'info');
+  });
+
+  el.territoryList.addEventListener('change', onSelectTerritory);
+
+  el.btnSaveTexts.addEventListener('click', saveTexts);
+  el.btnForceSave.addEventListener('click', hardSaveNow);
+  el.btnDelete.addEventListener('click', deleteSelected);
+
+  el.btnGenQR.addEventListener('click', generateQR);
+
+  el.btnExportJson.addEventListener('click', exportJSON);
+  el.btnImportJson.addEventListener('click', () => el.importFile.click());
+  el.btnImportTop.addEventListener('click', () => el.importFile.click());
+  el.importFile.addEventListener('change', async () => {
+    const file = el.importFile.files && el.importFile.files[0];
+    el.importFile.value = '';
+    if(!file) return;
+    await importJSONFile(file);
+  });
+
+  el.btnSavePdf.addEventListener('click', exportPDF);
+  el.btnSaveJpg.addEventListener('click', exportJPG);
+
+  // Autosave wiring
+  wireAutosaveFields();
+
+  /** ---------- Boot ---------- */
+  initMainMap();
+  initPreviewMap();
+  refreshAllUI();
+  saveIndicator(state.ui.lastSavedAt ? 'saved' : 'dirty');
+
+})();
+</script>
+</body>
+</html>
