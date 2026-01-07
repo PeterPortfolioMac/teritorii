@@ -1,16 +1,38 @@
-<div id="viewer" style="width:100%;height:100vh;background:#111;"></div>
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>360 Viewer</title>
+  <link rel="stylesheet" href="https://unpkg.com/@photo-sphere-viewer/core@5/index.css">
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #viewer { width: 100%; height: 100%; background: #111; }
+    #msg { position: fixed; top: 12px; left: 12px; right: 12px; padding: 10px 12px; background: rgba(0,0,0,.6); color: #fff; font-family: system-ui, sans-serif; border-radius: 8px; display:none; }
+  </style>
+</head>
+<body>
+  <div id="viewer"></div>
+  <div id="msg"></div>
 
-<link rel="stylesheet" href="https://unpkg.com/@photo-sphere-viewer/core@5/index.css">
+  <script type="module">
+    import { Viewer } from "https://unpkg.com/@photo-sphere-viewer/core@5/index.module.js";
 
-<script type="module">
-  import { Viewer } from "https://unpkg.com/@photo-sphere-viewer/core@5/index.module.js";
+    const panorama = "https://peterportfoliomac.github.io/teritorii/pano-1767280652736_0.jpg";
+    const msg = document.getElementById("msg");
 
-  const panorama = "https://peterportfoliomac.github.io/teritorii/pano-1767280652736_0.jpg";
-
-  new Viewer({
-    container: document.getElementById("viewer"),
-    panorama,
-    navbar: ["zoom", "move", "fullscreen"],
-    defaultZoomLvl: 0
-  });
-</script>
+    try {
+      new Viewer({
+        container: document.getElementById("viewer"),
+        panorama,
+        navbar: ["zoom", "move", "fullscreen"],
+        defaultZoomLvl: 0
+      });
+    } catch (e) {
+      msg.style.display = "block";
+      msg.textContent = "Nu s-a putut porni viewerul: " + (e?.message || e);
+      console.error(e);
+    }
+  </script>
+</body>
+</html>
