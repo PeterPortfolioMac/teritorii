@@ -1,0 +1,16 @@
+<div id="viewer" style="width:100%;height:100vh;background:#111;"></div>
+
+<link rel="stylesheet" href="https://unpkg.com/@photo-sphere-viewer/core@5/index.css">
+
+<script type="module">
+  import { Viewer } from "https://unpkg.com/@photo-sphere-viewer/core@5/index.module.js";
+
+  const panorama = "https://peterportfoliomac.github.io/teritorii/pano-1767280652736_0.jpg";
+
+  new Viewer({
+    container: document.getElementById("viewer"),
+    panorama,
+    navbar: ["zoom", "move", "fullscreen"],
+    defaultZoomLvl: 0
+  });
+</script>
