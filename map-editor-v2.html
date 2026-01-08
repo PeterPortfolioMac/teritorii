@@ -1,0 +1,2075 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TERITORII</title>
+
+  <!-- Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- MapLibre GL (rotate native on touch; we add Alt+Shift+drag rotate for mouse) -->
+  <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+
+  <!-- Mapbox GL Draw (works with MapLibre) -->
+  <link rel="stylesheet" href="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.css" />
+  <script src="https://unpkg.com/@mapbox/mapbox-gl-draw@1.4.3/dist/mapbox-gl-draw.js"></script>
+
+  <!-- Turf for centroid/bounds -->
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+  <!-- QR generator (SVG) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+
+  <!-- Export PDF (vector text/QR via SVG->PDF) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/svg2pdf.js/1.4.7/svg2pdf.umd.min.js"></script>
+
+  <script>
+  // Fallback loader for PDF libs (some networks block cdnjs; we try alternative CDNs).
+  (function(){
+    function loadScript(url){
+      return new Promise(function(resolve,reject){
+        var s=document.createElement('script');
+        s.src=url;
+        s.async=true;
+        s.onload=function(){ resolve(url); };
+        s.onerror=function(){ reject(new Error("Nu pot încărca: "+url)); };
+        document.head.appendChild(s);
+      });
+    }
+    window.__ensurePdfLibs = async function(){
+      // jsPDF UMD exports window.jspdf
+      if(!window.jspdf){
+        try{
+          await loadScript("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
+        }catch(_){
+          await loadScript("https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js");
+        }
+      }
+      // svg2pdf UMD exports window.svg2pdf (function) OR window.svg2pdf.svg2pdf OR .default
+      if(!window.svg2pdf){
+        try{
+          await loadScript("https://cdn.jsdelivr.net/npm/svg2pdf.js@2.4.0/dist/svg2pdf.umd.min.js");
+        }catch(_){
+          try{
+            await loadScript("https://unpkg.com/svg2pdf.js@2.4.0/dist/svg2pdf.umd.min.js");
+          }catch(__){
+            // fallback to GitHub via githack (useful when npm CDNs are blocked)
+            await loadScript("https://raw.githack.com/yWorks/svg2pdf.js/master/dist/svg2pdf.umd.min.js");
+          }
+        }
+      }
+    };
+  })();
+  </script>
+
+  <script>
+  (function(){
+    function loadScript(url){
+      return new Promise(function(resolve,reject){
+        var s=document.createElement('script'); s.src=url; s.async=true;
+        s.onload=function(){ resolve(url); }; s.onerror=function(){ reject(new Error('Nu pot încărca: '+url)); };
+        document.head.appendChild(s);
+      });
+    }
+    window.__ensureHtml2Canvas = async function(){
+      if(window.html2canvas) return;
+      try{ await loadScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js'); }
+      catch(_){ await loadScript('https://unpkg.com/html2canvas@1.4.1/dist/html2canvas.min.js'); }
+    };
+  })();
+  </script>
+
+  <style>
+    :root{
+      --bg:#f7f8fb;
+      --card:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --border:#e2e8f0;
+      --shadow: 0 10px 30px rgba(2,6,23,.08);
+      --shadow2: 0 6px 18px rgba(2,6,23,.08);
+      --primary:#2563eb;
+      --primary2:#1d4ed8;
+      --danger:#ef4444;
+      --ok:#16a34a;
+      --warn:#f59e0b;
+      --radius:18px;
+      --mapHDesk: 62vh;
+      --mapHMobile: 52vh;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      color:var(--text);
+      background:linear-gradient(180deg,#f8fafc 0%, var(--bg) 100%);
+    }
+    .wrap{max-width:1200px;margin:0 auto;padding:18px}
+    header{
+      position:sticky; top:0; z-index:20;
+      backdrop-filter:saturate(160%) blur(12px);
+      background:rgba(248,250,252,.72);
+      border-bottom:1px solid rgba(226,232,240,.7);
+    }
+    .headRow{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; max-width:1200px; margin:0 auto;}
+    .title{display:flex; align-items:baseline; gap:10px; letter-spacing:.5px;}
+    .title h1{margin:0;font-weight:900;font-size: clamp(20px, 2.4vw, 32px);}
+    .title .pill{font-size:12px;padding:4px 10px;border-radius:999px;background:rgba(37,99,235,.10);color:var(--primary2);border:1px solid rgba(37,99,235,.20);font-weight:700;}
+    .actions{display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end;}
+    .btn{
+      border:1px solid var(--border);
+      background:var(--card);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      display:inline-flex; align-items:center; gap:8px;
+      cursor:pointer;
+      box-shadow: 0 1px 0 rgba(2,6,23,.03);
+      transition: transform .08s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease;
+      user-select:none;
+      font-weight:700;
+      font-size:14px;
+      line-height:1;
+      white-space:nowrap;
+    }
+    .btn:hover{ transform: translateY(-1px); box-shadow: var(--shadow2); border-color:#d6deea}
+    .btn:active{ transform: translateY(0px); box-shadow:none}
+    .btn.primary{
+      background:linear-gradient(180deg, rgba(37,99,235,.95) 0%, rgba(29,78,216,.98) 100%);
+      border-color:rgba(37,99,235,.35);
+      color:white;
+    }
+    .btn.primary:hover{ box-shadow: 0 10px 26px rgba(37,99,235,.22); }
+    .btn.danger{
+      background:linear-gradient(180deg, rgba(239,68,68,.95) 0%, rgba(220,38,38,.98) 100%);
+      border-color:rgba(239,68,68,.35);
+      color:white;
+    }
+    .btn.small{ padding:8px 10px; font-size:13px; border-radius:12px;}
+    .btn:disabled{ opacity:.55; cursor:not-allowed; transform:none; box-shadow:none;}
+
+    .mapShell{position:relative;width:100%;height: var(--mapHDesk);border-bottom:1px solid var(--border);}
+    #mapMain{position:absolute; inset:0;}
+    .mapTopButtons{position:absolute;top:14px;right:14px;z-index:5;display:flex;gap:10px;flex-wrap:wrap;}
+    .mapOverlay{position:absolute;left:14px;top:14px;z-index:5;display:flex;flex-direction:column;gap:10px;max-width: min(92vw, 440px);}
+    .statusBar{
+      padding:10px 12px;border-radius: 14px;border:1px solid rgba(226,232,240,.9);
+      background: rgba(255,255,255,.88);box-shadow: var(--shadow2);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .statusLeft{display:flex; align-items:center; gap:10px; min-width:0;}
+    .statusDot{width:10px;height:10px;border-radius:999px;background: var(--ok);box-shadow: 0 0 0 4px rgba(22,163,74,.14);flex:0 0 auto;}
+    .statusText{font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .statusText b{color:var(--text)}
+    .chip{border-radius:999px;padding:6px 10px;font-size:12px;border:1px solid rgba(226,232,240,.9);background:rgba(248,250,252,.95);color:var(--muted);font-weight:700;display:flex;align-items:center;gap:8px;}
+    .chip strong{color:var(--text);}
+
+    .drawPanel{
+      border-radius: var(--radius);
+      border:1px solid rgba(226,232,240,.9);
+      background: rgba(255,255,255,.92);
+      box-shadow: var(--shadow);
+      padding:12px;
+      display:none;
+    }
+    .drawPanel.show{ display:block; }
+    .drawPanel h3{margin:0 0 10px 0; font-size:14px; letter-spacing:.3px; display:flex; align-items:center; justify-content:space-between;}
+    .drawPanel h3 span{ color:var(--muted); font-weight:700; font-size:12px;}
+    .drawGrid{display:grid;grid-template-columns: 1fr 1fr;gap:10px;margin-bottom:10px;}
+    .drawGrid .btn{ justify-content:center; }
+    .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap;}
+    .row .grow{ flex:1 1 auto;}
+    .row label{font-size:12px; color:var(--muted); font-weight:800;display:flex; align-items:center; gap:8px;}
+    input[type="color"]{width:42px;height:34px;border:none;background:transparent;padding:0;cursor:pointer;}
+
+    .section{ padding:18px 0;}
+    .card{background:var(--card);border:1px solid var(--border);border-radius: var(--radius);box-shadow: var(--shadow);padding:16px;}
+    .gridEdit{display:grid;grid-template-columns: 320px 1fr;gap:16px;align-items:start;}
+    .card h2{margin:0 0 10px 0;font-size:18px;letter-spacing:.2px;}
+    .subtle{ color:var(--muted); font-size:13px; line-height:1.35; margin:0; }
+
+    .listbox{width:100%;min-height:220px;border:1px solid var(--border);border-radius: 14px;padding:10px;background:#fbfcff;font-size:14px;}
+    .form{display:grid;gap:10px;}
+    .field label{display:block;font-size:12px;font-weight:900;color:var(--muted);margin:0 0 6px 2px;letter-spacing:.2px;}
+    .field input, .field textarea{
+      width:100%;border:1px solid var(--border);border-radius:14px;padding:11px 12px;font-size:14px;outline:none;background:white;
+      transition:border-color .12s ease, box-shadow .12s ease;
+    }
+    .field textarea{min-height:92px; resize:vertical;}
+    .field input:focus, .field textarea:focus{border-color: rgba(37,99,235,.45);box-shadow: 0 0 0 4px rgba(37,99,235,.12);}
+
+    .toggleRow{
+      display:flex; align-items:center; justify-content:space-between; gap:14px;
+      margin-top:14px;border:1px solid var(--border);
+      background:linear-gradient(180deg,#fff 0%, #fbfdff 100%);
+      border-radius: 16px;padding:12px 12px;
+    }
+    .toggleRow .left{display:flex; gap:10px; align-items:center;}
+    .switch{position:relative;width:52px;height:30px;background:#e2e8f0;border-radius:999px;border:1px solid #d6deea;cursor:pointer;transition: background .12s ease;flex:0 0 auto;}
+    .switch::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:999px;background:#fff;box-shadow: 0 4px 10px rgba(2,6,23,.12);transition: transform .12s ease;}
+    .switch.on{ background: rgba(22,163,74,.20); border-color: rgba(22,163,74,.35); }
+    .switch.on::after{ transform: translateX(22px); }
+
+    .previewWrap{display:flex;justify-content:center;padding:18px 0 8px;}
+    .previewCard{width:min(760px, 96vw);aspect-ratio: 14 / 9.5;border-radius: 18px;border:none;background:#fff;box-shadow: var(--shadow);overflow:hidden;position:relative;}
+    .previewInner{position:absolute; inset:0;padding:18px;display:grid;grid-template-rows:auto 1fr;gap:10px;}
+    .previewTop{display:grid;grid-template-columns: 1fr auto;align-items:start;gap:10px;}
+    .previewTitle{text-align:center;font-weight:900;font-size:16px;margin-top:2px;}
+    .previewCity{text-align:center;font-weight:800;color:var(--muted);margin-top:2px;font-size:13px;}
+    .previewNumber{
+      font-weight:1000;font-size:34px;letter-spacing:.5px;line-height:1;padding:6px 10px;border-radius: 14px;
+      border:1px solid rgba(226,232,240,.9);background:linear-gradient(180deg,#fff 0%, #fbfdff 100%);
+      min-width: 110px;text-align:center;
+    }
+    .previewBody{display:grid;grid-template-columns: 1.2fr .8fr;gap:12px;min-height:0;}
+    .miniMapShell{position:relative;border:none;border-radius: 16px;overflow:hidden;min-height:0;background:#f8fafc;}
+    #mapPreview{position:absolute; inset:0;}
+    .miniHint{
+      position:absolute;left:10px;bottom:10px;right:10px;z-index:6;font-size:11px;line-height:1.25;
+      color: rgba(255,255,255,.92);background: rgba(2,6,23,.48);border:1px solid rgba(255,255,255,.18);
+      border-radius: 12px;padding:8px 10px;backdrop-filter: blur(8px);user-select:none;
+    }
+    .addrShell{border:none;border-radius: 16px;padding:12px;position:relative;overflow:hidden;background:linear-gradient(180deg,#fff 0%, #fbfdff 100%);min-height:0;display:flex;flex-direction:column;gap:10px;}
+    .addrText{white-space:pre-wrap;font-size:13px;color:var(--text);line-height:1.35;flex:1 1 auto;overflow:auto;padding-right:6px;}
+    .qrZone{position:absolute;right:12px;bottom:12px;width:120px;height:120px;border-radius: 14px;border:1px dashed rgba(100,116,139,.55);background:rgba(248,250,252,.9);display:flex;align-items:center;justify-content:center;color:var(--muted);font-weight:900;font-size:11px;text-align:center;padding:8px;}
+    .qrDraggable{position:absolute;left:0;top:0;touch-action:none;cursor:grab;user-select:none;}
+    .qrDraggable:active{ cursor:grabbing; }
+
+    .qrSection{display:grid;grid-template-columns: 1fr 210px auto;gap:10px;align-items:end;margin-top:12px;}
+    .footerBtns{display:grid;grid-template-columns: repeat(5, 1fr);gap:10px;margin:14px 0 30px;}
+
+    .toastHost{position:fixed;bottom:18px;left:18px;z-index:9999;display:flex;flex-direction:column;gap:10px;pointer-events:none;}
+    .toast{
+      pointer-events:auto;background: rgba(15,23,42,.92);color:white;padding:10px 12px;border-radius: 14px;
+      border:1px solid rgba(255,255,255,.12);box-shadow: 0 14px 32px rgba(2,6,23,.30);
+      display:flex;align-items:flex-start;gap:10px;max-width:min(92vw, 460px);
+    }
+    .toast i{ margin-top:2px; opacity:.92; }
+    .toast .tTitle{ font-weight:900; font-size:13px; margin:0 0 2px 0; }
+    .toast .tMsg{ margin:0; font-size:12.5px; opacity:.95; line-height:1.25; }
+    .toast .x{margin-left:auto;background:transparent;border:none;color:white;cursor:pointer;opacity:.8;font-size:16px;padding:0 4px;}
+
+    .hidden{ display:none !important; }
+
+    .modalBackdrop{position:fixed; inset:0;background: rgba(2,6,23,.55);z-index:9998;display:none;align-items:center;justify-content:center;padding:16px;}
+    .modalBackdrop.show{ display:flex; }
+    .modal{width:min(520px, 96vw);background:white;border-radius: 18px;border:1px solid rgba(226,232,240,.9);box-shadow: 0 18px 44px rgba(2,6,23,.24);padding:16px;}
+    .modal h3{ margin:0 0 8px 0; }
+    .modal p{ margin:0 0 12px 0; color:var(--muted); font-size:13px; line-height:1.35;}
+    .kbd{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size: 12px;padding:2px 6px;border-radius:8px;border:1px solid var(--border);background:#f8fafc;color:#334155;font-weight:800;}
+
+    @media (max-width: 980px){
+      .gridEdit{ grid-template-columns: 1fr; }
+      .footerBtns{ grid-template-columns: 1fr; }
+      .qrSection{ grid-template-columns: 1fr; }
+      .mapShell{ height: var(--mapHMobile); }
+      .mapTopButtons{ left:14px; right:14px; justify-content:flex-end; }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="headRow">
+      <div class="title">
+        <h1>TERITORII</h1>
+        <span class="pill"><i class="fa-solid fa-map-location-dot"></i> MapLibre + Draw</span>
+      </div>
+      <div class="actions">
+        <button id="btnImportTop" class="btn"><i class="fa-solid fa-file-import"></i> Importă JSON</button>
+        <button id="btnAddTerritoryTop" class="btn primary"><i class="fa-solid fa-draw-polygon"></i> Adaugă teritoriu</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="mapShell">
+    <div id="mapMain"></div>
+
+    <div class="mapTopButtons">
+      <button id="btnImport" class="btn"><i class="fa-solid fa-file-import"></i> Importă JSON</button>
+      <button id="btnAddTerritory" class="btn primary"><i class="fa-solid fa-plus"></i> Adaugă teritoriu</button>
+    </div>
+
+    <div class="mapOverlay">
+      <div class="statusBar">
+        <div class="statusLeft">
+          <div id="saveDot" class="statusDot" title="Autosave"></div>
+          <div class="statusText" id="saveStatus">Autosave: <b>Salvat ✔</b></div>
+        </div>
+        <div class="chip" title="Layer / fallback">
+          <i class="fa-solid fa-layer-group"></i>
+          <span id="tileChip"><strong>RRZE HD</strong></span>
+        </div>
+      </div>
+
+      <div id="drawPanel" class="drawPanel">
+        <h3>
+          <span><i class="fa-solid fa-pen-ruler"></i> Mod desenare</span>
+          <span id="drawTerritoryIdBadge" class="kbd">ID: —</span>
+        </h3>
+        <div class="drawGrid">
+          <button id="btnDrawPolygon" class="btn small"><i class="fa-solid fa-draw-polygon"></i> Poligon</button>
+          <button id="btnDrawLine" class="btn small"><i class="fa-solid fa-pen"></i> Linie</button>
+          <button id="btnUndoDraw" class="btn small"><i class="fa-solid fa-rotate-left"></i> Undo</button>
+          <button id="btnCancelDraw" class="btn small"><i class="fa-solid fa-ban"></i> Cancel</button>
+        </div>
+        <div class="row">
+          <label title="Culoarea formei selectate (sau default pentru următoarele)">
+            <i class="fa-solid fa-palette"></i> Culoare
+            <input id="drawColor" type="color" value="#2563eb" />
+          </label>
+          <div class="grow"></div>
+          <button id="btnSaveDraw" class="btn primary"><i class="fa-solid fa-check"></i> Salvează</button>
+        </div>
+        <p class="subtle" style="margin:10px 2px 0 2px;">
+          Rotire: <span class="kbd">Alt</span> + <span class="kbd">Shift</span> + drag stânga (sau rotate cu 2 degete).
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="section">
+      <div class="toggleRow">
+        <div class="left">
+          <i class="fa-solid fa-location-dot" style="color:var(--primary);"></i>
+          <div>
+            <div style="font-weight:900;">Coordonate GPS</div>
+            <div class="subtle">Când e ON, click pe hartă → coordonate + link Google Maps → Copy / Trimite la QR.</div>
+          </div>
+        </div>
+        <div id="gpsSwitch" class="switch" role="switch" aria-checked="false" tabindex="0"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="card">
+        <h2>EDITARE ȘI SALVARE</h2>
+        <p class="subtle">Selectează un teritoriu pentru a edita Oraș / Număr / Adresă. Autosave în localStorage (debounce 500ms). Export/Import JSON complet.</p>
+
+        <div class="gridEdit" style="margin-top:14px;">
+          <div class="card" style="box-shadow:none;">
+            <h2 style="font-size:16px;margin-bottom:8px;">Teritorii</h2>
+            <select id="territoryList" class="listbox" size="10"></select>
+            <div class="row" style="margin-top:10px;">
+              <button id="btnFocusMain" class="btn small"><i class="fa-solid fa-crosshairs"></i> Center pe hartă</button>
+              <button id="btnDelete" class="btn small danger"><i class="fa-solid fa-trash"></i> Șterge</button>
+            </div>
+          </div>
+
+          <div class="card" style="box-shadow:none;">
+            <h2 style="font-size:16px;margin-bottom:8px;">Detalii teritoriu</h2>
+            <div class="form">
+              <div class="field">
+                <label for="cityInput">Oraș</label>
+                <input id="cityInput" type="text" placeholder="ex: București" />
+              </div>
+              <div class="field">
+                <label for="numberInput">Numărul teritoriului (ID unic)</label>
+                <input id="numberInput" type="text" inputmode="numeric" placeholder="ex: 512" />
+              </div>
+              <div class="field">
+                <label for="addressInput">Adresă</label>
+                <textarea id="addressInput" placeholder="Linie 1&#10;Linie 2&#10;..."></textarea>
+              </div>
+              <div class="row">
+                <button id="btnSaveMeta" class="btn primary"><i class="fa-solid fa-floppy-disk"></i> Salvează</button>
+                <button id="btnForceSave" class="btn"><i class="fa-solid fa-cloud-arrow-up"></i> Salvează teritoriu</button>
+              </div>
+              <p class="subtle" id="selHint">Selectează un teritoriu din listă ca să apară preview-ul și exporturile.</p>
+            </div>
+
+            <div class="previewWrap">
+              <div id="previewCard" class="previewCard">
+                <div class="previewInner">
+                  <div class="previewTop">
+                    <div>
+                      <div class="previewTitle">Harta teritoriului</div>
+                      <div id="prevCity" class="previewCity">—</div>
+                    </div>
+                    <div id="prevNumber" class="previewNumber">—</div>
+                  </div>
+
+                  <div class="previewBody">
+                    <div class="miniMapShell">
+                      <div id="mapPreview"></div>
+                      <div id="miniHint" class="miniHint">
+                        <div style="font-weight:900;margin-bottom:4px;">How to interact with the maps?</div>
+                        <div>Move: drag with two fingers / drag with the left mouse button</div>
+                        <div>Zoom: pinch or spread with two fingers / hold Ctrl and scroll with the mouse wheel</div>
+                        <div>Rotate: rotate with two fingers / hold Alt + Shift and drag with the left mouse button</div>
+                      </div>
+                    </div>
+                    <div id="addrShell" class="addrShell">
+                      <div class="addrText" id="prevAddress">—</div>
+                      <div id="qrZone" class="qrZone">Zonă QR</div>
+                      <div id="qrDrag" class="qrDraggable hidden"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div id="qrSection" class="card" style="margin-top:12px; box-shadow:none;">
+              <h2 style="font-size:16px;margin-bottom:8px;">GENERARE QR</h2>
+              <div class="qrSection">
+                <div class="field">
+                  <label for="qrUrl">Introduceți un URL</label>
+                  <input id="qrUrl" type="text" placeholder="https://www.google.com/maps?q=LAT,LNG" />
+                </div>
+                <div class="field">
+                  <label for="qrSize">Dimensiune QR (px)</label>
+                  <input id="qrSize" type="number" min="80" max="600" step="1" value="220" />
+                </div>
+                <button id="btnGenQR" class="btn primary"><i class="fa-solid fa-qrcode"></i> Generează cod QR pe hartă</button>
+              </div>
+              <p class="subtle" style="margin:10px 2px 0 2px;">QR-ul este SVG (vector), se poate muta (drag) și se salvează per teritoriu (url, size, poziție).</p>
+            </div>
+
+          </div>
+        </div>
+
+        <div class="footerBtns">
+          <button id="btnExportJSON" class="btn"><i class="fa-solid fa-file-export"></i> Export JSON</button>
+          <button id="btnForceSave2" class="btn"><i class="fa-solid fa-cloud-arrow-up"></i> Salvează teritoriu</button>
+          <button id="btnExportPDF" class="btn primary"><i class="fa-solid fa-file-pdf"></i> Salvează PDF</button>
+          <button id="btnExportJPG" class="btn primary"><i class="fa-solid fa-file-image"></i> Salvează JPG 300DPI</button>
+          <button id="btnDelete2" class="btn danger"><i class="fa-solid fa-trash"></i> Șterge teritoriu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <input id="importFile" type="file" accept="application/json" class="hidden" />
+  <div id="toastHost" class="toastHost" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="modalBackdrop" class="modalBackdrop" role="dialog" aria-modal="true">
+    <div class="modal">
+      <h3 id="modalTitle">Titlu</h3>
+      <p id="modalDesc">Descriere</p>
+      <div class="field">
+        <label id="modalLabel" for="modalInput">Etichetă</label>
+        <input id="modalInput" type="text" />
+        <div class="subtle" id="modalError" style="margin-top:8px;color:var(--danger);display:none;"></div>
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:12px;">
+        <button id="modalCancel" class="btn"><i class="fa-solid fa-xmark"></i> Anulează</button>
+        <button id="modalOk" class="btn primary"><i class="fa-solid fa-check"></i> OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="exportMapHost" class="hidden" style="position:fixed;left:-99999px;top:-99999px;"></div>
+
+<script>
+/* =======================
+   RECAP CERINȚE (checklist)
+   =======================
+   ✅ Single file index.html, CDN only
+   ✅ Map RRZE HD 512 (tileSize 512), fallback OSM 256 on tile error + toast
+   ✅ Rotate: touch native + Alt+Shift+drag mouse
+   ✅ Add territory: polygons + lines; edit/reshape/move before save
+   ✅ Undo/Cancel in draw mode
+   ✅ Unique numeric territory number as ID + label on main map
+   ✅ GPS toggle: click -> coords + Google URL + Copy + Send to QR
+   ✅ Edit texts (city/number/address) per territory; persist switching; autosave localStorage (debounce 500ms) + "Salvat ✔"
+   ✅ Preview ratio 14cm x 9.5cm; interactive map shows only selected territory; address text with line breaks; QR zone
+   ✅ QR: SVG vector, draggable, persisted per territory (url, sizePx, x,y, svg)
+   ✅ Export JSON (all data) + Import JSON (reconstruct all)
+   ✅ Export PDF exact 14x9.5cm, 300DPI geometry; text+QR vector (SVG->PDF). Map raster high-res.
+   ✅ Export JPG 1654x1122 px (14cm×9.5cm @300DPI)
+   ✅ Delete territory: removes from map/list/state/localStorage
+*/
+
+const STORAGE_KEY = "teritorii_app_state_v1";
+
+let state = {
+  version: 1,
+  ui: {
+    selectedTerritoryId: null,
+    gpsEnabled: false,
+    tileProvider: "RRZE",
+    lastSavedAt: Date.now(),
+  },
+  territories: {}
+};
+
+const deepClone = (o)=> JSON.parse(JSON.stringify(o));
+
+function normalizeTerritoryId(val){
+  const s = String(val ?? "").trim();
+  if(!/^\d+$/.test(s)) return null;
+  const stripped = s.replace(/^0+(?=\d)/,'');
+  return stripped.length ? stripped : "0";
+}
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;" }[c])); }
+function escapeXml(s){ return String(s).replace(/[<>&'"]/g, c=>({'<':'&lt;','>':'&gt;','&':'&amp;',"'":'&apos;','"':'&quot;'}[c])); }
+function nowIso(){ return new Date().toISOString().replace("T"," ").replace(/\.\d+Z$/,"Z"); }
+
+/* ---------- Toasts ---------- */
+function toast({title, message, icon="fa-circle-info", tone="info", ms=3400}){
+  const host = document.getElementById("toastHost");
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = `
+    <i class="fa-solid ${icon}"></i>
+    <div>
+      <div class="tTitle">${escapeHtml(title||"")}</div>
+      <p class="tMsg">${escapeHtml(message||"")}</p>
+    </div>
+    <button class="x" aria-label="Închide"><i class="fa-solid fa-xmark"></i></button>
+  `;
+  el.querySelector(".x").addEventListener("click", ()=> el.remove());
+  host.appendChild(el);
+  setTimeout(()=> { if(el.isConnected) el.remove(); }, ms);
+}
+
+/* ---------- Autosave ---------- */
+let saveTimer = null;
+function markDirty(){
+  const dot = document.getElementById("saveDot");
+  dot.style.background = "var(--warn)";
+  dot.style.boxShadow = "0 0 0 4px rgba(245,158,11,.14)";
+  document.getElementById("saveStatus").innerHTML = 'Autosave: <b>Modificat…</b>';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveToLocalStorage, 500);
+}
+
+function saveToLocalStorage(){
+  try{
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(deepClone(state)));
+    state.ui.lastSavedAt = Date.now();
+    const dot = document.getElementById("saveDot");
+    dot.style.background = "var(--ok)";
+    dot.style.boxShadow = "0 0 0 4px rgba(22,163,74,.14)";
+    document.getElementById("saveStatus").innerHTML = `Autosave: <b>Salvat ✔</b> <span style="color:var(--muted);font-weight:700;">(${nowIso()})</span>`;
+  }catch(e){
+    console.error(e);
+    toast({title:"Eroare salvare", message:"Nu am putut salva în localStorage.", icon:"fa-circle-xmark", tone:"danger", ms:5200});
+  }
+}
+
+function loadFromLocalStorage(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const obj = JSON.parse(raw);
+    if(obj && obj.version === 1 && obj.territories){
+      state = obj;
+    }
+  }catch(e){ console.warn("load failed", e); }
+}
+
+/* ---------- Modal Prompt ---------- */
+function promptModal({title, desc, label, placeholder="", value="", validate}){
+  return new Promise((resolve)=>{
+    const back = document.getElementById("modalBackdrop");
+    const t = document.getElementById("modalTitle");
+    const d = document.getElementById("modalDesc");
+    const l = document.getElementById("modalLabel");
+    const input = document.getElementById("modalInput");
+    const err = document.getElementById("modalError");
+    const ok = document.getElementById("modalOk");
+    const cancel = document.getElementById("modalCancel");
+
+    t.textContent = title || "Introduceți valoarea";
+    d.textContent = desc || "";
+    l.textContent = label || "Valoare";
+    input.value = value || "";
+    input.placeholder = placeholder || "";
+    err.style.display = "none";
+    err.textContent = "";
+
+    function showError(msg){ err.textContent = msg; err.style.display = "block"; }
+    function cleanup(val){
+      back.classList.remove("show");
+      ok.removeEventListener("click", onOk);
+      cancel.removeEventListener("click", onCancel);
+      back.removeEventListener("click", onBack);
+      input.removeEventListener("keydown", onKey);
+      resolve(val);
+    }
+    function onOk(){
+      const v = input.value;
+      const e = validate ? validate(v) : null;
+      if(e) return showError(e);
+      cleanup(v);
+    }
+    function onCancel(){ cleanup(null); }
+    function onBack(ev){ if(ev.target === back) cleanup(null); }
+    function onKey(ev){
+      if(ev.key === "Enter"){ ev.preventDefault(); onOk(); }
+      if(ev.key === "Escape"){ ev.preventDefault(); onCancel(); }
+    }
+
+    ok.addEventListener("click", onOk);
+    cancel.addEventListener("click", onCancel);
+    back.addEventListener("click", onBack);
+    input.addEventListener("keydown", onKey);
+
+    back.classList.add("show");
+    setTimeout(()=> input.focus(), 0);
+  });
+}
+
+/* ---------- Map Styles / tiles ---------- */
+const ATTRIBUTION_OSM = '© OpenStreetMap contributors';
+const RRZE_TILES = ["https://tiles.rrze.fau.de/osmhd/{z}/{x}/{y}.png"];
+const OSM_TILES  = ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"];
+
+function makeRasterStyle(){
+  return {
+    version: 8,
+    name: "OSM Raster",
+    // Use demotiles glyphs (works for labels; if glyphs fail, we still function)
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    sources: {
+      rrze: { type:"raster", tiles: RRZE_TILES, tileSize:512, attribution: ATTRIBUTION_OSM },
+      osm:  { type:"raster", tiles: OSM_TILES,  tileSize:256, attribution: ATTRIBUTION_OSM },
+      territories: { type:"geojson", data:{type:"FeatureCollection",features:[]} },
+      labels: { type:"geojson", data:{type:"FeatureCollection",features:[]} },
+    },
+    layers: [
+      { id:"rrze-layer", type:"raster", source:"rrze", layout:{visibility:"visible"} },
+      { id:"osm-layer",  type:"raster", source:"osm",  layout:{visibility:"none"} },
+
+      { id:"territories-fill", type:"fill", source:"territories",
+        filter:["==",["geometry-type"],"Polygon"],
+        paint:{ "fill-color":["coalesce",["get","color"], "#2563eb"], "fill-opacity":0.25 }
+      },
+      { id:"territories-outline", type:"line", source:"territories",
+        filter:["==",["geometry-type"],"Polygon"],
+        paint:{
+          "line-color":["coalesce",["get","color"], "#2563eb"],
+          "line-width":["case", ["boolean", ["get","selected"], false], 4, 2],
+          "line-opacity":0.95
+        }
+      },
+      { id:"territories-line", type:"line", source:"territories",
+        filter:["==",["geometry-type"],"LineString"],
+        paint:{
+          "line-color":["coalesce",["get","color"], "#2563eb"],
+          "line-width":["case", ["boolean", ["get","selected"], false], 5, 3],
+          "line-opacity":0.95
+        }
+      },
+      { id:"territory-labels", type:"symbol", source:"labels",
+        layout:{
+          "text-field":["get","label"],
+          "text-font":["Open Sans Bold","Noto Sans Bold"],
+          "text-size":16,
+          "text-anchor":"center",
+          "text-allow-overlap":true
+        },
+        paint:{
+          "text-color":"#0f172a",
+          "text-halo-color":"rgba(255,255,255,0.92)",
+          "text-halo-width":2
+        }
+      }
+    ]
+  };
+}
+
+/* ---------- Maps ---------- */
+let mapMain, mapPreview, exportMap;
+let draw;
+let drawMode = false;
+let drawTerritoryId = null;
+let drawUndoStack = [];
+let drawUndoIndex = -1;
+
+function setLayerVisibility(map, layerId, visibility){
+  try{ if(map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", visibility); }catch(e){}
+}
+
+function attachTileFallback(map, silentChip=false){
+  let switched = false;
+  map.on("error", (ev)=>{
+    if(switched) return;
+    if(ev?.sourceId !== "rrze") return; // only rrze source
+    switched = true;
+    try{
+      map.setLayoutProperty("rrze-layer","visibility","none");
+      map.setLayoutProperty("osm-layer","visibility","visible");
+    }catch(e){}
+    state.ui.tileProvider = "OSM";
+    if(!silentChip) document.getElementById("tileChip").innerHTML = "<strong>OSM fallback</strong>";
+    markDirty();
+    toast({title:"Fallback tiles", message:"RRZE nu răspunde. Am comutat pe OpenStreetMap default.", icon:"fa-layer-group", tone:"warn", ms:4200});
+  });
+}
+
+function enableAltShiftRotate(map){
+  let rotating = false;
+  let startX = 0;
+  let startBearing = 0;
+
+  const canvas = map.getCanvas();
+  canvas.addEventListener("pointerdown", (e)=>{
+    if(e.button !== 0) return;
+    if(!(e.altKey && e.shiftKey)) return;
+    rotating = true;
+    startX = e.clientX;
+    startBearing = map.getBearing();
+    canvas.style.cursor = "grabbing";
+    e.preventDefault();
+  }, {passive:false});
+
+  window.addEventListener("pointermove", (e)=>{
+    if(!rotating) return;
+    const dx = e.clientX - startX;
+    map.setBearing(startBearing + dx * 0.35);
+    e.preventDefault();
+  }, {passive:false});
+
+  window.addEventListener("pointerup", ()=>{
+    if(!rotating) return;
+    rotating = false;
+    canvas.style.cursor = "";
+  }, {passive:true});
+}
+
+function drawStyles(){
+  return [
+    { id:"gl-draw-polygon-fill", type:"fill",
+      filter:["all", ["==","$type","Polygon"], ["==","active","true"]],
+      paint:{ "fill-color":["coalesce",["get","color"],"#2563eb"], "fill-opacity":0.22 }
+    },
+    { id:"gl-draw-polygon-stroke-active", type:"line",
+      filter:["all", ["==","$type","Polygon"], ["==","active","true"]],
+      paint:{ "line-color":["coalesce",["get","color"],"#2563eb"], "line-width":3 }
+    },
+    { id:"gl-draw-polygon-fill-inactive", type:"fill",
+      filter:["all", ["==","$type","Polygon"], ["==","active","false"]],
+      paint:{ "fill-color":["coalesce",["get","color"],"#2563eb"], "fill-opacity":0.18 }
+    },
+    { id:"gl-draw-polygon-stroke-inactive", type:"line",
+      filter:["all", ["==","$type","Polygon"], ["==","active","false"]],
+      paint:{ "line-color":["coalesce",["get","color"],"#2563eb"], "line-width":2 }
+    },
+    { id:"gl-draw-line-active", type:"line",
+      filter:["all", ["==","$type","LineString"], ["==","active","true"]],
+      paint:{ "line-color":["coalesce",["get","color"],"#2563eb"], "line-width":4 }
+    },
+    { id:"gl-draw-line-inactive", type:"line",
+      filter:["all", ["==","$type","LineString"], ["==","active","false"]],
+      paint:{ "line-color":["coalesce",["get","color"],"#2563eb"], "line-width":3 }
+    },
+    { id:"gl-draw-polygon-and-line-vertex-halo-active", type:"circle",
+      filter:["all", ["==","meta","vertex"], ["==","active","true"]],
+      paint:{ "circle-radius":7, "circle-color":"#fff" }
+    },
+    { id:"gl-draw-polygon-and-line-vertex-active", type:"circle",
+      filter:["all", ["==","meta","vertex"], ["==","active","true"]],
+      paint:{ "circle-radius":4, "circle-color":["coalesce",["get","color"],"#2563eb"] }
+    }
+  ];
+}
+
+function initMaps(){
+  mapMain = new maplibregl.Map({
+    container: "mapMain",
+    style: makeRasterStyle(),
+    center: [26.0963, 44.4397],
+    zoom: 10.2,
+    bearing: 0,
+    attributionControl: true
+  });
+
+  mapMain.addControl(new maplibregl.NavigationControl({showCompass:true}), "bottom-right");
+  mapMain.addControl(new maplibregl.ScaleControl({maxWidth:120, unit:"metric"}), "bottom-left");
+  enableAltShiftRotate(mapMain);
+  attachTileFallback(mapMain);
+
+  draw = new MapboxDraw({
+    displayControlsDefault: false,
+    defaultMode: "simple_select",
+    styles: drawStyles()
+  });
+
+  mapMain.on("load", ()=>{
+    mapMain.addControl(draw, "top-left");
+    // hide default draw UI container (we use our own buttons), but keep draw active
+    const ctrl = document.querySelector(".mapboxgl-ctrl-top-left");
+    if(ctrl) ctrl.style.display = "none";
+
+    rebuildTerritorySources();
+
+    mapMain.on("click", (e)=>{
+      if(drawMode) return;
+      if(state.ui.gpsEnabled) showGpsPopup(e.lngLat);
+
+      // select territory when clicking on it
+      const feats = mapMain.queryRenderedFeatures(e.point, { layers:["territories-fill","territories-line","territories-outline"] });
+      const tid = feats?.[0]?.properties?.territoryId;
+      if(tid && state.territories[tid]) selectTerritory(tid);
+    });
+  });
+
+  mapPreview = new maplibregl.Map({
+    container: "mapPreview",
+    style: makeRasterStyle(),
+    center: [26.0963, 44.4397],
+    zoom: 12,
+    bearing: 0,
+    interactive: true,
+    attributionControl: false,
+    preserveDrawingBuffer: true
+  });
+  mapPreview.addControl(new maplibregl.NavigationControl({showCompass:true}), "top-right");
+  enableAltShiftRotate(mapPreview);
+  attachTileFallback(mapPreview, true);
+  mapPreview.on("load", ()=>{
+    setLayerVisibility(mapPreview, "territory-labels", "none");
+    rebuildTerritorySources(); // ensure preview source exists
+  });
+
+  // Persist preview view per territory
+  const persist = ()=>{
+    const id = state.ui.selectedTerritoryId;
+    if(!id || !state.territories[id]) return;
+    const c = mapPreview.getCenter();
+    state.territories[id].mapView = { center:[c.lng,c.lat], zoom: mapPreview.getZoom(), bearing: mapPreview.getBearing() };
+    markDirty();
+  };
+  mapPreview.on("moveend", persist);
+  mapPreview.on("zoomend", persist);
+  mapPreview.on("rotateend", persist);
+}
+
+/* ---------- GeoJSON sources ---------- */
+function getAllElementsAsFeatureCollection(selectedId=null){
+  const features = [];
+  for(const [tid, t] of Object.entries(state.territories)){
+    for(const feat of (t.elements || [])){
+      const f = deepClone(feat);
+      f.properties = f.properties || {};
+      f.properties.territoryId = tid;
+      f.properties.selected = (selectedId && tid === selectedId);
+      features.push(f);
+    }
+  }
+  return {type:"FeatureCollection", features};
+}
+
+function computeLabelPoints(){
+  const feats = [];
+  for(const [tid, t] of Object.entries(state.territories)){
+    const label = t.meta?.number || tid;
+    const elements = t.elements || [];
+    if(!elements.length) continue;
+
+    const poly = elements.find(f => f.geometry?.type === "Polygon" || f.geometry?.type === "MultiPolygon");
+    const line = elements.find(f => f.geometry?.type === "LineString" || f.geometry?.type === "MultiLineString");
+    let pt = null;
+    try{
+      if(poly) pt = turf.centroid(poly);
+      else if(line){
+        const len = turf.length(line, {units:"kilometers"});
+        pt = turf.along(line, len/2, {units:"kilometers"});
+      }
+    }catch(e){ pt = null; }
+    if(!pt) continue;
+
+    feats.push({type:"Feature", geometry: pt.geometry, properties:{label}});
+  }
+  return {type:"FeatureCollection", features:feats};
+}
+
+function rebuildTerritorySources(){
+  const selected = state.ui.selectedTerritoryId;
+
+  if(mapMain && mapMain.isStyleLoaded()){
+    try{
+      mapMain.getSource("territories").setData(getAllElementsAsFeatureCollection(selected));
+      mapMain.getSource("labels").setData(computeLabelPoints());
+    }catch(e){}
+  }
+
+  if(mapPreview && mapPreview.isStyleLoaded()){
+    try{
+      if(selected && state.territories[selected]){
+        const t = state.territories[selected];
+        mapPreview.getSource("territories").setData({type:"FeatureCollection",features: deepClone(t.elements || [])});
+      }else{
+        mapPreview.getSource("territories").setData({type:"FeatureCollection",features:[]});
+      }
+    }catch(e){}
+  }
+}
+
+function fitMainToTerritory(tid){
+  const t = state.territories[tid];
+  if(!t?.elements?.length) return;
+  try{
+    const bb = turf.bbox({type:"FeatureCollection",features:t.elements});
+    mapMain.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]], {padding: 80, duration: 900});
+  }catch(e){}
+}
+
+function fitPreviewToSelected(){
+  const id = state.ui.selectedTerritoryId;
+  if(!id || !state.territories[id]) return;
+  const t = state.territories[id];
+
+  if(t.mapView?.center){
+    mapPreview.jumpTo({center:t.mapView.center, zoom:t.mapView.zoom ?? 14, bearing:t.mapView.bearing ?? 0});
+    return;
+  }
+
+  if(!t.elements?.length) return;
+  try{
+    const bb = turf.bbox({type:"FeatureCollection",features:t.elements});
+    mapPreview.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]], {padding: 40, duration: 700});
+  }catch(e){}
+}
+
+/* ---------- List + selection ---------- */
+function refreshTerritoryList(){
+  const list = document.getElementById("territoryList");
+  const ids = Object.keys(state.territories).sort((a,b)=>Number(a)-Number(b));
+  list.innerHTML = "";
+  for(const id of ids){
+    const opt = document.createElement("option");
+    opt.value = id;
+    opt.textContent = id;
+    list.appendChild(opt);
+  }
+  if(state.ui.selectedTerritoryId && state.territories[state.ui.selectedTerritoryId]){
+    list.value = state.ui.selectedTerritoryId;
+  }
+  updateSelectionUI();
+}
+
+function setPreviewText(t){
+  document.getElementById("prevCity").textContent = (t?.meta?.city?.trim() ? t.meta.city.trim() : "—");
+  document.getElementById("prevNumber").textContent = (t?.meta?.number?.trim() ? t.meta.number.trim() : (t ? t.id : "—"));
+  document.getElementById("prevAddress").textContent = (t?.meta?.address?.trim() ? t.meta.address : "—");
+}
+
+function clearQRUI(){
+  const drag = document.getElementById("qrDrag");
+  drag.classList.add("hidden");
+  drag.innerHTML = "";
+  drag.style.transform = "translate(0px,0px)";
+  document.getElementById("qrZone").style.display = "flex";
+}
+
+function hydrateQRUI(t){
+  document.getElementById("qrUrl").value = t.qr?.url || "";
+  document.getElementById("qrSize").value = t.qr?.sizePx || 220;
+
+  if(t.qr?.svg){
+    document.getElementById("qrZone").style.display = "none";
+    const drag = document.getElementById("qrDrag");
+    drag.classList.remove("hidden");
+    drag.innerHTML = t.qr.svg;
+    const svgEl = drag.querySelector("svg");
+    if(svgEl){
+      svgEl.setAttribute("width", t.qr.sizePx || 220);
+      svgEl.setAttribute("height", t.qr.sizePx || 220);
+      svgEl.setAttribute("shape-rendering","crispEdges");
+      svgEl.style.display = "block";
+    }
+    drag.style.transform = `translate(${t.qr.x ?? 0}px, ${t.qr.y ?? 0}px)`;
+  }else{
+    clearQRUI();
+  }
+}
+
+function updateSelectionUI(){
+  const id = state.ui.selectedTerritoryId;
+  const has = !!(id && state.territories[id]);
+  document.getElementById("selHint").style.display = has ? "none" : "block";
+
+  ["btnExportPDF","btnExportJPG","btnDelete","btnDelete2","btnSaveMeta","btnForceSave","btnForceSave2","btnFocusMain","btnGenQR"]
+    .forEach(btnId => document.getElementById(btnId).disabled = !has);
+
+  if(!has){
+    document.getElementById("cityInput").value = "";
+    document.getElementById("numberInput").value = "";
+    document.getElementById("addressInput").value = "";
+    setPreviewText(null);
+    clearQRUI();
+    rebuildTerritorySources();
+    return;
+  }
+
+  const t = state.territories[id];
+  document.getElementById("cityInput").value = t.meta?.city || "";
+  document.getElementById("numberInput").value = t.meta?.number || id;
+  document.getElementById("addressInput").value = t.meta?.address || "";
+  setPreviewText(t);
+  hydrateQRUI(t);
+  rebuildTerritorySources();
+  fitPreviewToSelected();
+}
+
+function selectTerritory(tid){
+  if(!state.territories[tid]) return;
+  state.ui.selectedTerritoryId = tid;
+  refreshTerritoryList();
+  markDirty();
+}
+
+/* ---------- GPS popup ---------- */
+function showGpsPopup(lngLat){
+  const lat = lngLat.lat.toFixed(6);
+  const lng = lngLat.lng.toFixed(6);
+  const url = `https://www.google.com/maps?q=${lat},${lng}`;
+
+  const container = document.createElement("div");
+  container.style.minWidth = "260px";
+  container.innerHTML = `
+    <div style="font-weight:900;margin-bottom:6px;">Coordonate: <span style="font-weight:800;color:#334155">${lat}, ${lng}</span></div>
+    <div style="font-size:12px;color:#64748b;margin-bottom:8px;">Google Maps URL</div>
+    <input type="text" value="${url}" style="width:100%;padding:9px 10px;border-radius:12px;border:1px solid #e2e8f0;font-size:12.5px;" />
+    <div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end;">
+      <button class="btn small" id="copyUrlBtn" style="box-shadow:none;"><i class="fa-solid fa-copy"></i> Copiază URL</button>
+      <button class="btn small primary" id="sendQrBtn" style="box-shadow:none;"><i class="fa-solid fa-qrcode"></i> Trimite la QR</button>
+    </div>
+  `;
+  const popup = new maplibregl.Popup({closeButton:true, closeOnClick:true, maxWidth:"360px"})
+    .setLngLat([lngLat.lng, lngLat.lat])
+    .setDOMContent(container)
+    .addTo(mapMain);
+
+  const input = container.querySelector("input");
+  container.querySelector("#copyUrlBtn").addEventListener("click", async ()=>{
+    try{ await navigator.clipboard.writeText(input.value); }
+    catch(e){ input.select(); document.execCommand("copy"); }
+    toast({title:"Copiat", message:"URL-ul a fost copiat.", icon:"fa-copy", tone:"ok"});
+  });
+
+  container.querySelector("#sendQrBtn").addEventListener("click", ()=>{
+    document.getElementById("qrUrl").value = input.value;
+    document.getElementById("qrSection").scrollIntoView({behavior:"smooth", block:"center"});
+    toast({title:"Trimis la QR", message:"URL-ul a fost pus în câmpul QR.", icon:"fa-qrcode", tone:"ok"});
+    popup.remove();
+  });
+}
+
+/* ---------- Draw mode ---------- */
+function setDrawPanel(show){ document.getElementById("drawPanel").classList.toggle("show", !!show); }
+
+function pushDrawSnapshot(){
+  const fc = draw.getAll();
+  const s = JSON.stringify(fc);
+  const last = drawUndoStack[drawUndoIndex] ? JSON.stringify(drawUndoStack[drawUndoIndex]) : null;
+  if(s === last) return;
+
+  if(drawUndoIndex < drawUndoStack.length - 1){
+    drawUndoStack = drawUndoStack.slice(0, drawUndoIndex + 1);
+  }
+  drawUndoStack.push(deepClone(fc));
+  drawUndoIndex = drawUndoStack.length - 1;
+}
+
+function ensureDrawFeatureProps(){
+  const all = draw.getAll();
+  const defaultColor = document.getElementById("drawColor").value;
+  for(const f of all.features){
+    f.properties = f.properties || {};
+    if(!f.properties.elementId){
+      f.properties.elementId = (crypto?.randomUUID ? crypto.randomUUID() : ("e_" + Math.random().toString(16).slice(2)));
+    }
+    if(!f.properties.color) f.properties.color = defaultColor;
+  }
+  draw.set(all);
+}
+
+function onDrawChange(){
+  ensureDrawFeatureProps();
+  pushDrawSnapshot();
+}
+
+function setSelectedDrawColor(color){
+  if(!drawMode) return;
+  const selectedIds = draw.getSelectedIds();
+  const all = draw.getAll();
+  if(selectedIds.length){
+    for(const f of all.features){
+      if(selectedIds.includes(f.id)){
+        f.properties = f.properties || {};
+        f.properties.color = color;
+      }
+    }
+    draw.set(all);
+    pushDrawSnapshot();
+  }
+}
+
+function enterDrawMode(territoryId){
+  drawMode = true;
+  drawTerritoryId = territoryId;
+  drawUndoStack = [];
+  drawUndoIndex = -1;
+
+  draw.deleteAll();
+  setDrawPanel(true);
+  document.getElementById("drawTerritoryIdBadge").textContent = "ID: " + territoryId;
+
+  // Wire events
+  mapMain.off("draw.create", onDrawChange);
+  mapMain.off("draw.update", onDrawChange);
+  mapMain.off("draw.delete", onDrawChange);
+  mapMain.on("draw.create", onDrawChange);
+  mapMain.on("draw.update", onDrawChange);
+  mapMain.on("draw.delete", onDrawChange);
+
+  draw.changeMode("draw_polygon");
+  pushDrawSnapshot();
+
+  toast({title:"Mod desenare ON", message:`Desenează pentru teritoriul ${territoryId}.`, icon:"fa-pen-ruler", tone:"ok"});
+}
+
+function exitDrawMode(){
+  drawMode = false;
+  drawTerritoryId = null;
+  setDrawPanel(false);
+  try{ draw.changeMode("simple_select"); }catch(e){}
+  mapMain.off("draw.create", onDrawChange);
+  mapMain.off("draw.update", onDrawChange);
+  mapMain.off("draw.delete", onDrawChange);
+}
+
+function undoDraw(){
+  if(drawUndoIndex <= 0) return;
+  drawUndoIndex -= 1;
+  draw.set(deepClone(drawUndoStack[drawUndoIndex]));
+  toast({title:"Undo", message:"Am revenit la pasul anterior.", icon:"fa-rotate-left", tone:"ok", ms:1600});
+}
+
+function cancelDraw(){
+  draw.deleteAll();
+  exitDrawMode();
+  toast({title:"Anulat", message:"Nu s-a salvat nimic.", icon:"fa-ban", tone:"warn"});
+}
+
+function saveDrawToState(){
+  const fc = draw.getAll();
+  const feats = fc.features.filter(f => ["Polygon","MultiPolygon","LineString","MultiLineString"].includes(f.geometry?.type));
+  if(!feats.length){
+    toast({title:"Nimic de salvat", message:"Desenează cel puțin un poligon sau o linie.", icon:"fa-triangle-exclamation", tone:"warn"});
+    return;
+  }
+  const tid = drawTerritoryId;
+  const defaultColor = document.getElementById("drawColor").value;
+
+  state.territories[tid] = {
+    id: tid,
+    elements: feats.map(f=>{
+      const g = deepClone(f);
+      g.type = "Feature";
+      g.properties = g.properties || {};
+      g.properties.territoryId = tid;
+      if(!g.properties.elementId){
+        g.properties.elementId = (crypto?.randomUUID ? crypto.randomUUID() : ("e_" + Math.random().toString(16).slice(2)));
+      }
+      if(!g.properties.color) g.properties.color = defaultColor;
+      return g;
+    }),
+    meta: { city:"", address:"", number: tid },
+    qr: { url:"", sizePx:220, x:0, y:0, svg:"" },
+    mapView: null
+  };
+
+  state.ui.selectedTerritoryId = tid;
+  exitDrawMode();
+  refreshTerritoryList();
+  rebuildTerritorySources();
+  fitMainToTerritory(tid);
+  updateSelectionUI();
+  markDirty();
+  toast({title:"Salvat", message:`Teritoriul ${tid} a fost imprimat pe hartă.`, icon:"fa-check", tone:"ok"});
+}
+
+async function beginAddTerritoryFlow(){
+  if(drawMode){
+    toast({title:"Mod desenare", message:"Finalizează cu «Salvează» sau «Cancel».", icon:"fa-pen-ruler", tone:"warn"});
+    return;
+  }
+  const v = await promptModal({
+    title:"Adaugă teritoriu",
+    desc:"Introduceți numărul teritoriului (numeric și unic).",
+    label:"Număr teritoriu",
+    placeholder:"ex: 512",
+    validate:(x)=>{
+      const id = normalizeTerritoryId(x);
+      if(!id) return "Valoare invalidă. Doar cifre.";
+      if(state.territories[id]) return `Teritoriul ${id} există deja.`;
+      return null;
+    }
+  });
+  if(v === null) return;
+  const id = normalizeTerritoryId(v);
+  if(!id) return;
+  enterDrawMode(id);
+}
+
+/* ---------- QR (SVG) ---------- */
+function makeQrSvg(url, sizePx){
+  const qr = qrcode(0, "M");
+  qr.addData(url);
+  qr.make();
+  const cellCount = qr.getModuleCount();
+  const cellSize = Math.max(1, Math.floor(sizePx / cellCount));
+  return qr.createSvgTag({ cellSize, margin: 2, scalable:true });
+}
+
+function saveQrToState({url, sizePx, x, y, svg}){
+  const id = state.ui.selectedTerritoryId;
+  if(!id || !state.territories[id]) return;
+  state.territories[id].qr = {url, sizePx, x, y, svg};
+  markDirty();
+}
+
+function genQR(){
+  const id = state.ui.selectedTerritoryId;
+  if(!id || !state.territories[id]){
+    toast({title:"Selectează un teritoriu", message:"Trebuie să selectezi un teritoriu înainte să generezi QR.", icon:"fa-triangle-exclamation", tone:"warn"});
+    return;
+  }
+  const url = document.getElementById("qrUrl").value.trim();
+  const sizePx = Math.max(80, Math.min(600, Number(document.getElementById("qrSize").value || 220)));
+  if(!url){
+    toast({title:"URL gol", message:"Introdu un URL valid.", icon:"fa-triangle-exclamation", tone:"warn"});
+    return;
+  }
+
+  const svg = makeQrSvg(url, sizePx);
+
+  const t = state.territories[id];
+  const drag = document.getElementById("qrDrag");
+  const zone = document.getElementById("qrZone");
+  zone.style.display = "none";
+  drag.classList.remove("hidden");
+  drag.innerHTML = svg;
+
+  const svgEl = drag.querySelector("svg");
+  if(svgEl){
+    svgEl.setAttribute("width", sizePx);
+    svgEl.setAttribute("height", sizePx);
+    svgEl.setAttribute("shape-rendering","crispEdges");
+    svgEl.style.display = "block";
+  }
+
+  // Default position (bottom-right inside addrShell) on first set
+  const shell = document.getElementById("addrShell");
+  const pad = 10;
+  let x = t.qr?.x ?? (shell.clientWidth - sizePx - pad);
+  let y = t.qr?.y ?? (shell.clientHeight - sizePx - pad);
+  x = Math.max(pad, Math.min(shell.clientWidth - sizePx - pad, x));
+  y = Math.max(pad, Math.min(shell.clientHeight - sizePx - pad, y));
+
+  drag.style.transform = `translate(${x}px, ${y}px)`;
+  saveQrToState({url, sizePx, x, y, svg});
+  toast({title:"QR generat", message:"QR-ul a fost plasat în preview. Îl poți muta (drag).", icon:"fa-qrcode", tone:"ok"});
+}
+
+function initQrDrag(){
+  const drag = document.getElementById("qrDrag");
+  const shell = document.getElementById("addrShell");
+  let start = null;
+
+  drag.addEventListener("pointerdown", (e)=>{
+    if(drag.classList.contains("hidden")) return;
+    const id = state.ui.selectedTerritoryId;
+    if(!id || !state.territories[id]) return;
+
+    drag.setPointerCapture(e.pointerId);
+    const t = state.territories[id];
+    start = { pid:e.pointerId, x0:e.clientX, y0:e.clientY, curX:(t.qr?.x ?? 0), curY:(t.qr?.y ?? 0) };
+    e.preventDefault();
+  });
+
+  drag.addEventListener("pointermove", (e)=>{
+    if(!start || e.pointerId !== start.pid) return;
+    const id = state.ui.selectedTerritoryId;
+    if(!id || !state.territories[id]) return;
+
+    const t = state.territories[id];
+    const dx = e.clientX - start.x0;
+    const dy = e.clientY - start.y0;
+    const sizePx = Number(t.qr?.sizePx || 220);
+
+    const pad = 10;
+    const maxX = shell.clientWidth - sizePx - pad;
+    const maxY = shell.clientHeight - sizePx - pad;
+    const x = Math.max(pad, Math.min(maxX, start.curX + dx));
+    const y = Math.max(pad, Math.min(maxY, start.curY + dy));
+
+    document.getElementById("qrDrag").style.transform = `translate(${x}px, ${y}px)`;
+    t.qr.x = x; t.qr.y = y;
+    markDirty();
+    e.preventDefault();
+  });
+
+  drag.addEventListener("pointerup", (e)=>{
+    if(!start || e.pointerId !== start.pid) return;
+    start = null;
+    toast({title:"Poziție QR salvată", message:"Poziția QR a fost memorată.", icon:"fa-thumbtack", tone:"ok", ms:1400});
+  });
+}
+
+/* ---------- JSON Export / Import ---------- */
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportJSON(){
+  const blob = new Blob([JSON.stringify(deepClone(state), null, 2)], {type:"application/json"});
+  downloadBlob(blob, `teritorii_export_${new Date().toISOString().slice(0,10)}.json`);
+  toast({title:"Export JSON", message:"Fișierul JSON a fost descărcat.", icon:"fa-file-export", tone:"ok"});
+}
+
+function validateImportedState(obj){
+  if(!obj || typeof obj !== "object") return "JSON invalid (nu este obiect).";
+  if(!obj.territories || typeof obj.territories !== "object") return "Lipsește «territories» sau format greșit.";
+  for(const k of Object.keys(obj.territories)){
+    const id = normalizeTerritoryId(k);
+    if(!id || id !== k) return `ID teritoriu invalid: «${k}». Trebuie numeric (string).`;
+    const t = obj.territories[k];
+    if(!t || typeof t !== "object") return `Teritoriu invalid: ${k}.`;
+    if(!Array.isArray(t.elements)) return `Teritoriul ${k} nu are «elements» (array).`;
+    for(const f of t.elements){
+      if(!f || f.type !== "Feature" || !f.geometry) return `Geometrie invalidă la ${k}.`;
+      if(!["Polygon","MultiPolygon","LineString","MultiLineString"].includes(f.geometry.type)) return `Tip geometrie neacceptat la ${k}: ${f.geometry.type}.`;
+    }
+    if(!t.meta || typeof t.meta !== "object") t.meta = {city:"", address:"", number:k};
+    if(!t.meta.number) t.meta.number = k;
+    if(!t.qr || typeof t.qr !== "object") t.qr = {url:"", sizePx:220, x:0, y:0, svg:""};
+    if(!("mapView" in t)) t.mapView = null;
+  }
+  if(!obj.ui || typeof obj.ui !== "object") obj.ui = {selectedTerritoryId:null, gpsEnabled:false, tileProvider:"RRZE", lastSavedAt:Date.now()};
+  obj.version = 1;
+  return null;
+}
+
+function importJSONFromFile(file){
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    try{
+      const obj = JSON.parse(String(reader.result || ""));
+      const err = validateImportedState(obj);
+      if(err){
+        toast({title:"Import eșuat", message:err, icon:"fa-circle-xmark", tone:"danger", ms:6000});
+        return;
+      }
+      state = obj;
+      if(state.ui.selectedTerritoryId && !state.territories[state.ui.selectedTerritoryId]) state.ui.selectedTerritoryId = null;
+
+      refreshTerritoryList();
+      rebuildTerritorySources();
+      updateSelectionUI();
+      saveToLocalStorage();
+
+      toast({title:"Import reușit", message:"Am reconstruit teritoriile + culori + texte + QR + poziții.", icon:"fa-file-import", tone:"ok"});
+    }catch(e){
+      console.error(e);
+      toast({title:"Import eșuat", message:"Fișier JSON invalid.", icon:"fa-circle-xmark", tone:"danger", ms:6000});
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- Delete territory ---------- */
+function deleteSelectedTerritory(){
+  const id = state.ui.selectedTerritoryId;
+  if(!id || !state.territories[id]) return;
+  if(!confirm(`Ștergi definitiv teritoriul ${id}?`)) return;
+
+  delete state.territories[id];
+  state.ui.selectedTerritoryId = null;
+  refreshTerritoryList();
+  rebuildTerritorySources();
+  updateSelectionUI();
+  markDirty();
+  toast({title:"Șters", message:`Teritoriul ${id} a fost șters complet.`, icon:"fa-trash", tone:"ok"});
+}
+
+/* ---------- Save meta + rename ID ---------- */
+function saveMetaForSelected(){
+  const id = state.ui.selectedTerritoryId;
+  if(!id || !state.territories[id]) return;
+
+  const city = document.getElementById("cityInput").value;
+  const numberRaw = document.getElementById("numberInput").value;
+  const address = document.getElementById("addressInput").value;
+
+  const newId = normalizeTerritoryId(numberRaw);
+  if(!newId){
+    toast({title:"Număr invalid", message:"Numărul trebuie să fie numeric.", icon:"fa-triangle-exclamation", tone:"warn"});
+    return;
+  }
+
+  if(newId !== id){
+    if(state.territories[newId]){
+      toast({title:"ID duplicat", message:`Teritoriul ${newId} există deja.`, icon:"fa-triangle-exclamation", tone:"warn"});
+      return;
+    }
+    const t = state.territories[id];
+    delete state.territories[id];
+    t.id = newId;
+    for(const f of (t.elements||[])){ f.properties = f.properties || {}; f.properties.territoryId = newId; }
+    t.meta = t.meta || {};
+    t.meta.number = newId;
+    state.territories[newId] = t;
+    state.ui.selectedTerritoryId = newId;
+    toast({title:"ID actualizat", message:`Teritoriul a fost redenumit: ${id} → ${newId}.`, icon:"fa-id-card", tone:"ok"});
+  }
+
+  const t2 = state.territories[state.ui.selectedTerritoryId];
+  t2.meta = t2.meta || {city:"",address:"",number:state.ui.selectedTerritoryId};
+  t2.meta.city = city;
+  t2.meta.address = address;
+  t2.meta.number = state.ui.selectedTerritoryId;
+
+  refreshTerritoryList();
+  setPreviewText(t2);
+  rebuildTerritorySources();
+  markDirty();
+  toast({title:"Salvat", message:"Textele au fost salvate.", icon:"fa-floppy-disk", tone:"ok"});
+}
+
+/* ---------- Export PDF/JPG 300DPI ---------- */
+const DPI = 300;
+const CARD_W_PX = 1654; // exact 14cm @300dpi
+const CARD_H_PX = 1122; // exact 9.5cm @300dpi
+const PT_PER_PX = 72 / DPI;
+// PDF export uses physical units (mm) so the printed size is always 14×9.5cm.
+const MM_PER_PX = 25.4 / DPI;
+const CARD_W_MM = 140; // 14cm
+const CARD_H_MM = 95;  // 9.5cm
+
+function buildLayoutPx(){
+  const pad = 44;
+  const bodyTop = pad + 110;
+  const bodyH = CARD_H_PX - bodyTop - pad;
+
+  const leftW = Math.floor((CARD_W_PX - pad*2) * 0.58);
+  const gap = 24;
+  const rightW = (CARD_W_PX - pad*2) - leftW - gap;
+
+  return {
+    pad,
+    mapBox: {x:pad, y:bodyTop, w:leftW, h:bodyH, r:28},
+    textBox:{x:pad+leftW+gap, y:bodyTop, w:rightW, h:bodyH, r:28}
+  };
+}
+
+async function ensureExportMap(widthPx, heightPx){
+  const host = document.getElementById("exportMapHost");
+  host.style.width = widthPx + "px";
+  host.style.height = heightPx + "px";
+  host.classList.remove("hidden");
+
+  if(exportMap){
+    // Keep the backing container in sync with requested export size.
+    const div = host.firstElementChild;
+    if(div){
+      div.style.width = widthPx + "px";
+      div.style.height = heightPx + "px";
+    }
+    // Resize after layout flush (MapLibre needs the container to have final dimensions).
+    await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));
+    exportMap.resize();
+    return exportMap;
+  }
+
+  const div = document.createElement("div");
+  div.style.width = widthPx + "px";
+  div.style.height = heightPx + "px";
+  host.appendChild(div);
+
+  exportMap = new maplibregl.Map({
+    container: div,
+    style: makeRasterStyle(),
+    center: [26.0963, 44.4397],
+    zoom: 12,
+    bearing: 0,
+    interactive: false,
+    attributionControl: false,
+    preserveDrawingBuffer: true
+  });
+  attachTileFallback(exportMap, true);
+
+  await new Promise(res=>{
+    exportMap.on("load", ()=>{ setLayerVisibility(exportMap, "territory-labels", "none"); res(); });
+  });
+
+  return exportMap;
+}
+
+function waitForMapIdle(map){
+  return new Promise((resolve)=>{
+    let done = false;
+    const to = setTimeout(()=>{ if(!done){ done=true; resolve(); } }, 12000);
+    map.once("idle", ()=>{ if(done) return; done=true; clearTimeout(to); resolve(); });
+  });
+}
+
+// Export must match exactly what the user framed in the PREVIEW map.
+// If preview is available for the selected territory, we export using its current camera.
+function getPreferredExportView(t){
+  try{
+    if(mapPreview && state.ui.selectedTerritoryId === t.id){
+      const c = mapPreview.getCenter();
+      return { center:[c.lng, c.lat], zoom: mapPreview.getZoom(), bearing: mapPreview.getBearing() };
+    }
+  }catch(e){}
+  if(t?.mapView?.center){
+    return { center: t.mapView.center, zoom: t.mapView.zoom ?? 14, bearing: t.mapView.bearing ?? 0 };
+  }
+  return null;
+}
+
+function selectedTerritoryOrThrow(){
+  const id = state.ui.selectedTerritoryId;
+  if(!id || !state.territories[id]) throw new Error("Nu există teritoriu selectat.");
+  return state.territories[id];
+}
+
+async function snapshotTerritoryMap(t, targetW, targetH){
+  const scale = 2;
+  const w = Math.round(targetW * scale);
+  const h = Math.round(targetH * scale);
+  const m = await ensureExportMap(w, h);
+
+  m.getSource("territories").setData({type:"FeatureCollection", features: deepClone(t.elements || [])});
+
+  const view = getPreferredExportView(t);
+  if(view?.center){
+    m.jumpTo({center:view.center, zoom:view.zoom ?? 14, bearing:view.bearing ?? 0});
+  }else{
+    const bb = turf.bbox({type:"FeatureCollection",features:t.elements});
+    // Match preview framing more closely (preview uses ~40 padding).
+    m.fitBounds([[bb[0],bb[1]],[bb[2],bb[3]]], {padding: Math.round(40*scale), duration: 0});
+    m.setBearing(0);
+  }
+
+  // Give tiles a bit more time to finish; first "idle" can fire before all tiles are fully painted.
+  await waitForMapIdle(m);
+  await new Promise(r=>setTimeout(r, 80));
+  await waitForMapIdle(m);
+  return m.getCanvas().toDataURL("image/png");
+}
+
+function buildExportSvg(t, mapPngDataUrl, layout){
+  const city = (t.meta?.city || "").trim() || "—";
+  const number = (t.meta?.number || t.id || "—").trim();
+  const address = (t.meta?.address || "").trim() || "—";
+
+  // Address tspans
+  const lines = address.split(/\r?\n/);
+  const addrX = layout.textBox.x + 22;
+  const addrStartY = layout.textBox.y + 42;
+  let tspans = "";
+  for(const ln of lines){
+    tspans += `<tspan x="${addrX}" dy="18">${escapeXml(ln || " ")}</tspan>`;
+  }
+
+  // QR placement: stored x/y inside preview's addrShell; map proportionally into export text box
+  const pb = document.getElementById("addrShell").getBoundingClientRect();
+  const pbW = Math.max(1, pb.width);
+  const pbH = Math.max(1, pb.height);
+
+  const relX = (t.qr?.x ?? 0) / pbW;
+  const relY = (t.qr?.y ?? 0) / pbH;
+
+  const qrSize = Number(t.qr?.sizePx || 220);
+  const tb = layout.textBox;
+  const pad = 10;
+  const qrX = tb.x + Math.max(pad, Math.min(tb.w - qrSize - pad, relX * tb.w));
+  const qrY = tb.y + Math.max(pad, Math.min(tb.h - qrSize - pad, relY * tb.h));
+
+  // Extract inner of QR svg
+  const hasQR = !!(t.qr?.svg && t.qr?.url);
+  let qrInner = "";
+  if(hasQR){
+    const temp = document.createElement("div");
+    temp.innerHTML = t.qr.svg.trim();
+    const svgEl = temp.querySelector("svg");
+    if(svgEl){
+      const vb = svgEl.getAttribute("viewBox") || `0 0 ${qrSize} ${qrSize}`;
+      const vbParts = vb.split(" ").map(Number);
+      const vbW = vbParts[2] || qrSize;
+      const scale = qrSize / vbW;
+      qrInner = `<g transform="translate(${qrX},${qrY}) scale(${scale})">${svgEl.innerHTML}</g>`;
+    }
+  }
+
+  const padTop = layout.pad;
+  const numberBoxW = 220;
+  const numberBoxH = 92;
+  const numberBoxX = CARD_W_PX - padTop - numberBoxW;
+  const numberBoxY = padTop + 18;
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W_PX}" height="${CARD_H_PX}" viewBox="0 0 ${CARD_W_PX} ${CARD_H_PX}">
+      <defs>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#020617" flood-opacity="0.12"/>
+        </filter>
+        <style>
+          .title{ font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; font-weight:900; fill:#0f172a; }
+          .muted{ font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; font-weight:800; fill:#475569; }
+          .addr{ font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; font-weight:700; fill:#0f172a; }
+        </style>
+      </defs>
+
+      <rect x="0" y="0" width="${CARD_W_PX}" height="${CARD_H_PX}" rx="34" fill="#ffffff"/>
+      <rect x="18" y="18" width="${CARD_W_PX-36}" height="${CARD_H_PX-36}" rx="28" fill="#ffffff" stroke="#e2e8f0"/>
+
+      <text x="${CARD_W_PX/2}" y="${padTop+36}" text-anchor="middle" class="title" font-size="44">Harta teritoriului</text>
+      <text x="${CARD_W_PX/2}" y="${padTop+78}" text-anchor="middle" class="muted" font-size="30">${escapeXml(city)}</text>
+
+      <rect x="${numberBoxX}" y="${numberBoxY}" width="${numberBoxW}" height="${numberBoxH}" rx="22" fill="#fbfdff" stroke="#e2e8f0"/>
+      <text x="${numberBoxX + numberBoxW/2}" y="${numberBoxY + 64}" text-anchor="middle" class="title" font-size="58">${escapeXml(number)}</text>
+
+      <rect x="${layout.mapBox.x}" y="${layout.mapBox.y}" width="${layout.mapBox.w}" height="${layout.mapBox.h}" rx="${layout.mapBox.r}" fill="#f8fafc" stroke="#e2e8f0" filter="url(#shadow)"/>
+      <clipPath id="clipMap">
+        <rect x="${layout.mapBox.x}" y="${layout.mapBox.y}" width="${layout.mapBox.w}" height="${layout.mapBox.h}" rx="${layout.mapBox.r}"/>
+      </clipPath>
+      <image href="${mapPngDataUrl}" x="${layout.mapBox.x}" y="${layout.mapBox.y}" width="${layout.mapBox.w}" height="${layout.mapBox.h}" preserveAspectRatio="xMidYMid slice" clip-path="url(#clipMap)"/>
+
+      <rect x="${layout.textBox.x}" y="${layout.textBox.y}" width="${layout.textBox.w}" height="${layout.textBox.h}" rx="${layout.textBox.r}" fill="#fbfdff" stroke="#e2e8f0" filter="url(#shadow)"/>
+      <text class="addr" font-size="28" x="${addrX}" y="${addrStartY}">${tspans}</text>
+
+      <rect x="${layout.textBox.x + layout.textBox.w - 22 - 280}" y="${layout.textBox.y + layout.textBox.h - 22 - 280}" width="280" height="280" rx="22" fill="#f8fafc" stroke="#94a3b8" stroke-dasharray="8 8" opacity="0.75"/>
+      ${hasQR ? qrInner : `<text x="${layout.textBox.x + layout.textBox.w - 22 - 140}" y="${layout.textBox.y + layout.textBox.h - 22 - 140}" text-anchor="middle" class="muted" font-size="20">Zonă QR</text>`}
+    </svg>
+  `.trim();
+}
+
+function dataUrlToBlob(dataUrl){
+  const [header, data] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);/)[1];
+  const bin = atob(data);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], {type:mime});
+}
+
+
+
+
+async function exportPDF(){
+  let t;
+  try{ t = selectedTerritoryOrThrow(); }catch(e){
+    toast({title:"Eroare", message:e.message, icon:"fa-circle-xmark", tone:"danger"});
+    return;
+  }
+
+  try{
+    // Biblioteci + fonturi gata
+    await (window.__ensurePdfLibs ? window.__ensurePdfLibs() : Promise.resolve());
+    await (window.__ensureHtml2Canvas ? window.__ensureHtml2Canvas() : Promise.resolve());
+    await (document.fonts?.ready?.catch(()=>{}));
+
+    toast({title:"Export PDF", message:"Captură fidelă + text/QR vector, la dimensiunea 140×95 mm…", icon:"fa-file-pdf", tone:"info", ms:2600});
+
+    const cardEl = document.getElementById('previewCard');
+    const mapEl  = document.getElementById('mapPreview');
+    const rect   = mapEl.getBoundingClientRect();
+    const hintEl = document.getElementById('miniHint');
+
+    // NU mai ascund textele din preview — le păstrăm în captură și suprapunem vectorial
+    const prevHintDisplay = hintEl ? hintEl.style.display : null;
+    if(hintEl) hintEl.style.display = 'none';
+
+    // Ascund temporar controalele hărții (+, −, rotate)
+    let ctrlContainer, prevCtrlVis;
+    try{
+      if(window.mapPreview && typeof mapPreview.getContainer === 'function'){
+        ctrlContainer = mapPreview.getContainer().querySelector('.maplibregl-control-container');
+        if(ctrlContainer){ prevCtrlVis = ctrlContainer.style.visibility; ctrlContainer.style.visibility = 'hidden'; }
+      }
+    }catch(_){/* no-op */}
+
+
+
+    // Suprapun imaginea reală din canvas-ul hărții (identic cu preview)
+    let overlayImg = null;
+    try{
+      if(window.mapPreview){ await waitForMapIdle(mapPreview); }
+      const url = mapPreview.getCanvas().toDataURL('image/png');
+      overlayImg = new Image(); overlayImg.src = url; overlayImg.alt = '';
+      overlayImg.style.position = 'absolute'; overlayImg.style.inset = '0';
+      overlayImg.style.width = '100%'; overlayImg.style.height = '100%';
+      overlayImg.style.pointerEvents = 'none'; overlayImg.id = 'tmpExportMapShot';
+      mapEl.appendChild(overlayImg);
+    }catch(_){
+      try{
+        const fallbackUrl = await snapshotTerritoryMap(t, Math.round(rect.width), Math.round(rect.height));
+        overlayImg = new Image(); overlayImg.src = fallbackUrl; overlayImg.alt = '';
+        overlayImg.style.position = 'absolute'; overlayImg.style.inset = '0';
+        overlayImg.style.width = '100%'; overlayImg.style.height = '100%';
+        overlayImg.style.pointerEvents = 'none'; overlayImg.id = 'tmpExportMapShot';
+        mapEl.appendChild(overlayImg);
+      }catch(e){ console.warn('fallback export snapshot failed', e); }
+    }
+
+    // Captură la ~300 DPI (96 CSS px ≈ 1 inch)
+    const SCALE_300DPI = 300/96;
+    const canvas = await html2canvas(cardEl, { backgroundColor:'#ffffff', scale:SCALE_300DPI, useCORS:true, allowTaint:true, logging:false });
+
+    // Revenire UI
+    if(hintEl){ hintEl.style.display = prevHintDisplay; }
+    try{ document.getElementById('tmpExportMapShot')?.remove(); }catch(_){}
+    try{ if(ctrlContainer){ ctrlContainer.style.visibility = prevCtrlVis; } }catch(_){}
+
+    // PDF exact 140×95 mm (landscape) – fundal fidel
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:"mm", format:[CARD_W_MM, CARD_H_MM], orientation:'landscape', compress:true});
+    const bgDataUrl = canvas.toDataURL('image/png');
+    doc.addImage(bgDataUrl, 'PNG', 0, 0, CARD_W_MM, CARD_H_MM);
+
+    // SVG minim pentru text & QR (vector)
+    const layout = buildLayoutPx();
+    const city   = (t.meta?.city || "").trim() || "—";
+    const number = (t.meta?.number || t.id || "—").trim();
+    const address= (t.meta?.address || "").trim() || "—";
+
+    const lines = address.split(/\r?\n/);
+    const addrX = layout.textBox.x + 22;
+    const addrStartY = layout.textBox.y + 42;
+    let tspans = "";
+    for(const ln of lines){ tspans += `<tspan x="${addrX}" dy="18">${escapeXml(ln || " ")}</tspan>`; }
+
+    // Poziționare QR ca în preview
+    const hasQR = !!(t.qr?.svg && t.qr?.url);
+    let qrInner = "";
+    if(hasQR){
+      const temp = document.createElement("div"); temp.innerHTML = t.qr.svg.trim();
+      const svgEl = temp.querySelector("svg");
+      if(svgEl){
+        const qSize = Number(t.qr?.sizePx || 220);
+        const vb = svgEl.getAttribute("viewBox") || `0 0 ${qSize} ${qSize}`;
+        const vbParts = vb.split(" ").map(Number);
+        const vbW = vbParts[2] || qSize;
+        const scaleQR = qSize / vbW;
+        const pb = document.getElementById("addrShell").getBoundingClientRect();
+        const tb = layout.textBox;
+        const relX = (t.qr?.x ?? 0) / Math.max(1, pb.width);
+        const relY = (t.qr?.y ?? 0) / Math.max(1, pb.height);
+        const pad = 10;
+        const qrX = tb.x + Math.max(pad, Math.min(tb.w - qSize - pad, relX * tb.w));
+        const qrY = tb.y + Math.max(pad, Math.min(tb.h - qSize - pad, relY * tb.h));
+        qrInner = `<g transform="translate(${qrX},${qrY}) scale(${scaleQR})">${svgEl.innerHTML}</g>`;
+      }
+    }
+
+    const padTop = layout.pad;
+    const numberBoxW = 220;
+    const numberBoxH = 92;
+    const numberBoxX = CARD_W_PX - padTop - numberBoxW;
+    const numberBoxY = padTop + 18;
+
+    const overlaySvg = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="${CARD_W_PX}" height="${CARD_H_PX}" viewBox="0 0 ${CARD_W_PX} ${CARD_H_PX}">
+        <text x="${CARD_W_PX/2}" y="${padTop+36}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" fill="#0f172a" font-size="44">Harta teritoriului</text>
+        <text x="${CARD_W_PX/2}" y="${padTop+78}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="800" fill="#475569" font-size="30">${escapeXml(city)}</text>
+        <text x="${numberBoxX + numberBoxW/2}" y="${numberBoxY + 64}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" fill="#0f172a" font-size="58">${escapeXml(number)}</text>
+        <text x="${addrX}" y="${addrStartY}" font-family="Helvetica, Arial, sans-serif" font-weight="700" fill="#0f172a" font-size="18">${tspans}</text>
+        ${hasQR ? qrInner : `<text x="${layout.textBox.x + layout.textBox.w - 22 - 140}" y="${layout.textBox.y + layout.textBox.h - 22 - 140}" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="800" fill="#475569" font-size="20">Zonă QR</text>`}
+      </svg>
+    `.trim();
+
+    const temp = document.createElement("div"); temp.innerHTML = overlaySvg;
+    const svgEl = temp.querySelector("svg");
+    if(!svgEl) throw new Error("Nu am putut construi overlay-ul SVG pentru export.");
+
+    // Scale robust: mm / px (aliniere perfectă pe pagină)
+    const pageWmm = doc.internal.pageSize.getWidth();
+    const scale = pageWmm / CARD_W_PX;
+
+    const s2p = window.svg2pdf;
+    const svg2pdfFn =
+      (typeof s2p === "function") ? s2p :
+      (typeof s2p?.svg2pdf === "function") ? s2p.svg2pdf :
+      (typeof s2p?.default === "function") ? s2p.default : null;
+    if(!svg2pdfFn) throw new Error("svg2pdf.js nu este încărcat (window.svg2pdf lipsește). Verifică conexiunea/CDN.");
+
+    await Promise.resolve(svg2pdfFn(svgEl, doc, {x:0, y:0, scale}));
+
+    doc.save(`teritoriu_${t.id}_14x9.5cm_300dpi.pdf`);
+    toast({title:"PDF salvat", message:"PDF (140×95 mm) cu fundal fidel și text/QR vectoriale, fără controale pe hartă.", icon:"fa-circle-check", tone:"ok"});
+  }catch(err){
+    console.error("Export PDF failed:", err);
+    toast({title:"Export PDF eșuat", message:(err?.message || "A apărut o eroare la export.") + " Vezi Console (F12) pentru detalii.", icon:"fa-circle-xmark", tone:"danger", ms:6500});
+  }
+}
+
+
+
+async function exportJPG(){
+  let t;
+  try{ t = selectedTerritoryOrThrow(); }catch(e){
+    toast({title:"Eroare", message:e.message, icon:"fa-circle-xmark", tone:"danger"}); return;
+  }
+  await (window.__ensureHtml2Canvas ? window.__ensureHtml2Canvas() : Promise.resolve());
+
+  const cardEl = document.getElementById('previewCard');
+  const mapEl  = document.getElementById('mapPreview');
+  const rect   = mapEl.getBoundingClientRect();
+  const hintEl = document.getElementById('miniHint');
+
+  toast({title:"Export JPG", message:"Captură fidelă a previzualizării la 300 DPI…", icon:"fa-file-image", tone:"info", ms:2400});
+
+  // Hide overlay hint during export
+  const prevHintDisplay = hintEl ? hintEl.style.display : null;
+  if(hintEl) hintEl.style.display = 'none';
+
+  // Overlay map snapshot exactly from preview canvas
+  let overlayImg = null;
+  try{
+    if(mapPreview){ await waitForMapIdle(mapPreview); }
+    const url = mapPreview.getCanvas().toDataURL('image/png');
+    overlayImg = new Image(); overlayImg.src = url; overlayImg.alt = '';
+    overlayImg.style.position = 'absolute'; overlayImg.style.inset = '0';
+    overlayImg.style.width = '100%'; overlayImg.style.height = '100%';
+    overlayImg.style.pointerEvents = 'none'; overlayImg.id = 'tmpExportMapShot';
+    mapEl.appendChild(overlayImg);
+  }catch(_){
+    try{
+      const fallbackUrl = await snapshotTerritoryMap(t, Math.round(rect.width), Math.round(rect.height));
+      overlayImg = new Image(); overlayImg.src = fallbackUrl; overlayImg.alt = '';
+      overlayImg.style.position = 'absolute'; overlayImg.style.inset = '0';
+      overlayImg.style.width = '100%'; overlayImg.style.height = '100%';
+      overlayImg.style.pointerEvents = 'none'; overlayImg.id = 'tmpExportMapShot';
+      mapEl.appendChild(overlayImg);
+    }catch(e){ console.warn('fallback export snapshot failed', e); }
+  }
+
+  // Render at ~300 DPI (96 CSS px ≈ 1 inch)
+  const SCALE_300DPI = 300/96;
+  const canvas = await html2canvas(cardEl, { backgroundColor:'#ffffff', scale:SCALE_300DPI, useCORS:true, allowTaint:true, logging:false });
+
+  // Restore UI
+  if(hintEl){ hintEl.style.display = prevHintDisplay; }
+  try{ document.getElementById('tmpExportMapShot')?.remove(); }catch(_){}
+  try{ document.getElementById('exportMapHost')?.classList.add('hidden'); }catch(_){}
+
+  // JPEG blob
+  const quality = 0.95;
+  let blob = await new Promise((resolve)=>{ canvas.toBlob(resolve, 'image/jpeg', quality); });
+
+  // ---- Write JFIF 300 DPI and EXIF 300 DPI ----
+  async function setDpiJfifAndExif(b, dpi){
+    const ab = await b.arrayBuffer();
+    const v  = new DataView(ab);
+    const be16 = (x)=>[(x>>8)&0xFF, x&0xFF];
+
+    if(v.getUint16(0) !== 0xFFD8) return b; // SOI
+    // Build APP0 JFIF (length=16)
+    const app0 = new Uint8Array([0xFF,0xE0,0x00,0x10, 0x4A,0x46,0x49,0x46,0x00, 0x01,0x01, 0x01, ...be16(dpi), ...be16(dpi), 0x00,0x00]);
+
+    // Build APP1 EXIF with TIFF (little-endian) XResolution(0x011A), YResolution(0x011B), ResolutionUnit(0x0128=2 inch)
+    function buildExifAPP1(dpi){
+      // TIFF header (II, 0x002A, IFD0 offset=8)
+      const tiff = [];
+      tiff.push(0x49,0x49, 0x2A,0x00, 0x08,0x00,0x00,0x00);
+      // IFD0: 3 entries
+      tiff.push(0x03,0x00);
+      // Entry 1: XResolution (type=5 RATIONAL, count=1, valueOffset= offset to numerator/denominator)
+      // Entry 2: YResolution (same)
+      // Entry 3: ResolutionUnit (type=3 SHORT, count=1, value=2)
+      const ifdStart = tiff.length;
+      const data = [];
+      function writeEntry(tag, type, count, valueOrOffset){
+        tiff.push(tag & 0xFF, (tag>>8)&0xFF);
+        tiff.push(type & 0xFF, (type>>8)&0xFF);
+        tiff.push(count & 0xFF, (count>>8)&0xFF, 0x00,0x00);
+        // 4-byte value/offset (LE)
+        tiff.push(valueOrOffset & 0xFF, (valueOrOffset>>8)&0xFF, (valueOrOffset>>16)&0xFF, (valueOrOffset>>24)&0xFF);
+      }
+      // Reserve space for entries, we'll compute offsets
+      // Current offset from TIFF start: 8 (header) + 2 (count) + 12*3 entries + 4 (nextIFD=0)
+      const baseDataOffset = 8 + 2 + 12*3 + 4;
+      let cur = baseDataOffset;
+      // XResolution data (numerator/denominator)
+      const xNum = dpi, xDen = 1; const xOff = cur; cur += 8;
+      data.push(xNum & 0xFF, (xNum>>8)&0xFF, (xNum>>16)&0xFF, (xNum>>24)&0xFF,
+                xDen & 0xFF, (xDen>>8)&0xFF, (xDen>>16)&0xFF, (xDen>>24)&0xFF);
+      // YResolution data
+      const yNum = dpi, yDen = 1; const yOff = cur; cur += 8;
+      data.push(yNum & 0xFF, (yNum>>8)&0xFF, (yNum>>16)&0xFF, (yNum>>24)&0xFF,
+                yDen & 0xFF, (yDen>>8)&0xFF, (yDen>>16)&0xFF, (yDen>>24)&0xFF);
+
+      writeEntry(0x011A, 5, 1, xOff); // XResolution
+      writeEntry(0x011B, 5, 1, yOff); // YResolution
+      writeEntry(0x0128, 3, 1, 2);    // ResolutionUnit=2 (inch) packed into 4 bytes; LE ok
+      // next IFD offset = 0
+      tiff.push(0x00,0x00,0x00,0x00);
+      const tiffBytes = new Uint8Array([...tiff, ...data]);
+      const exifHeader = new Uint8Array([0xFF,0xE1]);
+      const id = new TextEncoder().encode('Exif  ');
+      const len = tiffBytes.length + id.length + 2; // length field excludes marker itself
+      const lenBE = new Uint8Array([ (len>>8)&0xFF, len & 0xFF ]);
+      return new Uint8Array([...exifHeader, ...lenBE, ...id, ...tiffBytes]);
+    }
+    const app1 = buildExifAPP1(dpi);
+
+    // Rebuild JPEG: SOI + APP0(JFIF) + APP1(EXIF) + rest (skip any existing APP0/APP1 to avoid duplicates)
+    const soi = new Uint8Array([0xFF,0xD8]);
+    const rest = new Uint8Array(ab.slice(2));
+    // Remove existing APP0/APP1 at the very start if present
+    let skip = 0;
+    const dv = new DataView(rest.buffer);
+    let ptr = 0;
+    while(ptr + 4 <= rest.length){
+      const marker = dv.getUint16(ptr);
+      if(marker === 0xFFE0 || marker === 0xFFE1){
+        const segLen = dv.getUint16(ptr+2);
+        skip += 2 + segLen; ptr += 2 + segLen; // marker (2 bytes) is in 'rest'; segLen includes its own 2 bytes
+      }else{ break; }
+    }
+    const rest2 = rest.slice(skip);
+
+    const out = new Uint8Array(soi.length + app0.length + app1.length + rest2.length);
+    out.set(soi, 0);
+    out.set(app0, soi.length);
+    out.set(app1, soi.length + app0.length);
+    out.set(rest2, soi.length + app0.length + app1.length);
+    return new Blob([out], {type:'image/jpeg'});
+  }
+
+  blob = await setDpiJfifAndExif(blob, 300);
+  const idSafe = (t.id||'teritoriu');
+  downloadBlob(blob, `teritoriu_${idSafe}_preview_300dpi.jpg`);
+  toast({title:"JPG salvat", message:"Export fără overlay; JFIF+EXIF setate la 300 DPI.", icon:"fa-circle-check", tone:"ok"});
+}
+
+
+/* ---------- UI wiring ---------- */
+function initUI(){
+  const importFile = document.getElementById("importFile");
+  const clickImport = ()=> importFile.click();
+  document.getElementById("btnImport").addEventListener("click", clickImport);
+  document.getElementById("btnImportTop").addEventListener("click", clickImport);
+  importFile.addEventListener("change", ()=>{
+    const f = importFile.files?.[0];
+    if(f) importJSONFromFile(f);
+    importFile.value = "";
+  });
+
+  document.getElementById("btnAddTerritory").addEventListener("click", beginAddTerritoryFlow);
+  document.getElementById("btnAddTerritoryTop").addEventListener("click", beginAddTerritoryFlow);
+
+  document.getElementById("btnDrawPolygon").addEventListener("click", ()=>{
+    if(!drawMode) return;
+    draw.changeMode("draw_polygon");
+    toast({title:"Desen poligon", message:"Click pentru puncte, dublu-click pentru finalizare.", icon:"fa-draw-polygon", tone:"info", ms:1700});
+  });
+  document.getElementById("btnDrawLine").addEventListener("click", ()=>{
+    if(!drawMode) return;
+    draw.changeMode("draw_line_string");
+    toast({title:"Desen linie", message:"Click pentru puncte, dublu-click pentru finalizare.", icon:"fa-pen", tone:"info", ms:1700});
+  });
+  document.getElementById("btnUndoDraw").addEventListener("click", undoDraw);
+  document.getElementById("btnCancelDraw").addEventListener("click", cancelDraw);
+  document.getElementById("btnSaveDraw").addEventListener("click", saveDrawToState);
+  document.getElementById("drawColor").addEventListener("input", (e)=> setSelectedDrawColor(e.target.value));
+
+  document.getElementById("territoryList").addEventListener("change", (e)=> selectTerritory(e.target.value));
+
+  document.getElementById("btnSaveMeta").addEventListener("click", saveMetaForSelected);
+
+  const forceSave = ()=>{ saveToLocalStorage(); toast({title:"Salvat", message:"Am forțat salvarea în localStorage.", icon:"fa-cloud-arrow-up", tone:"ok"}); };
+  document.getElementById("btnForceSave").addEventListener("click", forceSave);
+  document.getElementById("btnForceSave2").addEventListener("click", forceSave);
+
+  document.getElementById("btnExportJSON").addEventListener("click", exportJSON);
+
+  document.getElementById("btnDelete").addEventListener("click", deleteSelectedTerritory);
+  document.getElementById("btnDelete2").addEventListener("click", deleteSelectedTerritory);
+
+  document.getElementById("btnFocusMain").addEventListener("click", ()=>{
+    const id = state.ui.selectedTerritoryId;
+    if(id) fitMainToTerritory(id);
+  });
+
+  document.getElementById("btnGenQR").addEventListener("click", genQR);
+
+  document.getElementById("btnExportPDF").addEventListener("click", exportPDF);
+  document.getElementById("btnExportJPG").addEventListener("click", exportJPG);
+
+  // GPS switch
+  const sw = document.getElementById("gpsSwitch");
+  const setGps = (on)=>{
+    state.ui.gpsEnabled = !!on;
+    sw.classList.toggle("on", !!on);
+    sw.setAttribute("aria-checked", on ? "true":"false");
+    markDirty();
+    toast({title:on?"GPS ON":"GPS OFF", message:on?"Click pe hartă pentru coordonate.":"Click pe hartă nu mai afișează coordonate.", icon:"fa-location-dot", tone:on?"ok":"info", ms:1600});
+  };
+  sw.addEventListener("click", ()=> setGps(!state.ui.gpsEnabled));
+  sw.addEventListener("keydown", (e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); setGps(!state.ui.gpsEnabled);} });
+
+  // Live edit fields -> persist per territory (except rename only on save button)
+  ["cityInput","addressInput","numberInput"].forEach(fid=>{
+    document.getElementById(fid).addEventListener("input", ()=>{
+      const id = state.ui.selectedTerritoryId;
+      if(!id || !state.territories[id]) return;
+      const t = state.territories[id];
+      t.meta = t.meta || {city:"",address:"",number:id};
+
+      if(fid==="cityInput") t.meta.city = document.getElementById(fid).value;
+      if(fid==="addressInput") t.meta.address = document.getElementById(fid).value;
+      if(fid==="numberInput"){
+        const n = document.getElementById(fid).value.trim();
+        document.getElementById("prevNumber").textContent = n || id;
+      }
+      setPreviewText(t);
+      markDirty();
+    });
+  });
+
+  initQrDrag();
+}
+
+/* ---------- Boot ---------- */
+loadFromLocalStorage();
+
+window.addEventListener("DOMContentLoaded", ()=>{
+  initUI();
+  initMaps();
+  refreshTerritoryList();
+
+  if(state.ui.gpsEnabled){
+    document.getElementById("gpsSwitch").classList.add("on");
+    document.getElementById("gpsSwitch").setAttribute("aria-checked","true");
+  }
+  if(state.ui.tileProvider === "OSM"){
+    document.getElementById("tileChip").innerHTML = "<strong>OSM fallback</strong>";
+  }
+
+  // Start status
+  saveToLocalStorage();
+  toast({title:"Gata", message:"Aplicația e încărcată. Folosește «Adaugă teritoriu» pentru a desena.", icon:"fa-circle-check", tone:"ok", ms:2400});
+});
+
+// Crash surface (helps debug on GH Pages)
+window.addEventListener("error", (e)=>{
+  console.error("Global error:", e.error || e.message);
+  toast({title:"Eroare JS", message:"A apărut o eroare. Deschide Console (F12) pentru detalii.", icon:"fa-triangle-exclamation", tone:"danger", ms:6000});
+});
+window.addEventListener("unhandledrejection", (e)=>{
+  console.error("Unhandled:", e.reason);
+  toast({title:"Eroare Promise", message:"A apărut o eroare internă. Vezi Console.", icon:"fa-triangle-exclamation", tone:"danger", ms:6000});
+});
+</script>
+</body>
+</html>
